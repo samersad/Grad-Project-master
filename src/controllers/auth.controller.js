@@ -4,7 +4,9 @@ const asyncHandler = require('../utils/asyncHandler');
 const env = require('../config/env');
 const User = require('../models/user.model');
 const { buildSession } = require('../utils/session');
+const { signPasswordResetToken } = require('../utils/tokens');
 const { sanitizePayload, fields } = require('../utils/supabaseShape');
+const jwt = require('jsonwebtoken');
 
 const register = asyncHandler(async (req, res) => {
   const { email, password, name } = req.body;
@@ -43,8 +45,42 @@ const logout = asyncHandler(async (_req, res) => {
   return res.json({ signedOut: true });
 });
 
-const resetPassword = asyncHandler(async (_req, res) => {
-  return res.json({ message: 'Password reset email delivery is not configured for the replacement backend.' });
+const resetPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email) throw new ApiError(422, 'email is required');
+
+  const user = await User.findOne({ email: String(email).toLowerCase() });
+  const response = {
+    message: 'If this email exists, a password reset token has been generated.',
+  };
+
+  if (user && !env.isProduction) {
+    response.resetToken = signPasswordResetToken(user);
+    response.note = 'Development only: use resetToken with POST /auth/password-reset/confirm.';
+  }
+
+  return res.json(response);
+});
+
+const confirmPasswordReset = asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) throw new ApiError(422, 'token and password are required');
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, env.jwt.resetSecret);
+  } catch (_error) {
+    throw new ApiError(401, 'Invalid or expired reset token');
+  }
+
+  if (decoded.type !== 'password_reset') throw new ApiError(401, 'Invalid reset token');
+
+  const user = await User.findOne({ id: decoded.sub });
+  if (!user) throw new ApiError(404, 'User not found');
+
+  user.passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
+  await user.save();
+  return res.json({ user: user.toJSON(), session: buildSession(user) });
 });
 
 const updatePassword = asyncHandler(async (req, res) => {
@@ -62,5 +98,6 @@ module.exports = {
   me,
   logout,
   resetPassword,
+  confirmPasswordReset,
   updatePassword,
 };

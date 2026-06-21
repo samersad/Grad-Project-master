@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "82f7fd2b-6d90-4a4f-ae0e-sokon-api",
-    "name": "SOKON Backend API",
-    "description": "Postman collection for the SOKON backend API. Import this collection, set baseUrl if needed, login, then use the saved accessToken for protected routes.",
+    "name": "SOKON Backend API - Render",
+    "description": "Import this collection in Postman. Run Register or Login first; the collection saves accessToken, userId, apartmentId, bookingId, chatId, and notificationId automatically when possible.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -18,21 +18,16 @@
   "variable": [
     {
       "key": "serverUrl",
-      "value": "http://localhost:5000",
+      "value": "https://grad-project-master.onrender.com",
       "type": "string"
     },
     {
       "key": "baseUrl",
-      "value": "http://localhost:5000/api/v1",
+      "value": "https://grad-project-master.onrender.com/api/v1",
       "type": "string"
     },
     {
       "key": "accessToken",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "refreshToken",
       "value": "",
       "type": "string"
     },
@@ -52,7 +47,12 @@
       "type": "string"
     },
     {
-      "key": "reviewId",
+      "key": "chatId",
+      "value": "test-chat-001",
+      "type": "string"
+    },
+    {
+      "key": "messageId",
       "value": "",
       "type": "string"
     },
@@ -62,7 +62,7 @@
       "type": "string"
     },
     {
-      "key": "emailToken",
+      "key": "receiverId",
       "value": "",
       "type": "string"
     },
@@ -70,6 +70,31 @@
       "key": "resetToken",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "cloudinaryPublicId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "let json = {};",
+          "try { json = pm.response.json(); } catch (e) {}",
+          "if (json.session?.access_token) pm.collectionVariables.set('accessToken', json.session.access_token);",
+          "if (json.user?.id) pm.collectionVariables.set('userId', json.user.id);",
+          "if (json.resetToken) pm.collectionVariables.set('resetToken', json.resetToken);",
+          "if (json.id && pm.request.url.toString().includes('/apartments')) pm.collectionVariables.set('apartmentId', json.id);",
+          "if (json.id && pm.request.url.toString().includes('/bookings')) pm.collectionVariables.set('bookingId', json.id);",
+          "if (json.id && pm.request.url.toString().includes('/notifications')) pm.collectionVariables.set('notificationId', json.id);",
+          "if (json.id && pm.request.url.toString().includes('/messages')) pm.collectionVariables.set('messageId', json.id);",
+          "if (json.public_id) pm.collectionVariables.set('cloudinaryPublicId', json.public_id);"
+        ]
+      }
     }
   ],
   "item": [
@@ -86,28 +111,6 @@
             "header": [],
             "url": "{{serverUrl}}/health"
           }
-        },
-        {
-          "name": "OpenAPI JSON",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": "{{serverUrl}}/openapi.json"
-          }
-        },
-        {
-          "name": "Swagger UI",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": "{{serverUrl}}/api-docs"
-          }
         }
       ]
     },
@@ -115,7 +118,7 @@
       "name": "Auth",
       "item": [
         {
-          "name": "Register Student",
+          "name": "Register",
           "request": {
             "auth": {
               "type": "noauth"
@@ -129,57 +132,18 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Student User\",\n  \"email\": \"student@example.com\",\n  \"phone\": \"01000000000\",\n  \"password\": \"password123\",\n  \"preferredLanguage\": \"en\",\n  \"gender\": \"male\"\n}",
+              "raw": "{\n  \"name\": \"Sokon Test User\",\n  \"email\": \"sokon.test+{{$timestamp}}@example.com\",\n  \"password\": \"password123\",\n  \"college\": \"Engineering\",\n  \"phoneNumber\": \"01000000000\",\n  \"gender\": \"male\",\n  \"role\": \"client\",\n  \"photoUrl\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/auth/register/student"
-          }
-        },
-        {
-          "name": "Register Owner",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Owner User\",\n  \"email\": \"owner@example.com\",\n  \"phone\": \"01111111111\",\n  \"password\": \"password123\",\n  \"preferredLanguage\": \"en\",\n  \"gender\": \"male\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/auth/register/owner"
+            "url": "{{baseUrl}}/auth/register"
           }
         },
         {
           "name": "Login",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data?.accessToken) pm.collectionVariables.set('accessToken', json.data.accessToken);",
-                  "if (json.data?.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
-                  "if (json.data?.user?._id) pm.collectionVariables.set('userId', json.data.user._id);"
-                ]
-              }
-            }
-          ],
           "request": {
             "auth": {
               "type": "noauth"
@@ -193,7 +157,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"password123\"\n}",
+              "raw": "{\n  \"email\": \"sokon.test@example.com\",\n  \"password\": \"password123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -204,70 +168,23 @@
           }
         },
         {
-          "name": "Refresh Token",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data?.accessToken) pm.collectionVariables.set('accessToken', json.data.accessToken);",
-                  "if (json.data?.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
-                ]
-              }
-            }
-          ],
+          "name": "Me",
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/auth/refresh"
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me"
           }
         },
         {
           "name": "Logout",
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
+            "header": [],
             "url": "{{baseUrl}}/auth/logout"
           }
         },
         {
-          "name": "Verify Email",
+          "name": "Request Password Reset Token",
           "request": {
             "auth": {
               "type": "noauth"
@@ -281,18 +198,18 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"token\": \"{{emailToken}}\"\n}",
+              "raw": "{\n  \"email\": \"sokon.test@example.com\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/auth/verify-email"
+            "url": "{{baseUrl}}/auth/password-reset"
           }
         },
         {
-          "name": "Forgot Password",
+          "name": "Confirm Password Reset",
           "request": {
             "auth": {
               "type": "noauth"
@@ -306,39 +223,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"student@example.com\"\n}",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"password\": \"NewPassword@123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/auth/forgot-password"
-          }
-        },
-        {
-          "name": "Reset Password",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"password\": \"newPassword123\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/auth/reset-password"
+            "url": "{{baseUrl}}/auth/password-reset/confirm"
           }
         }
       ]
@@ -347,67 +239,11 @@
       "name": "Users",
       "item": [
         {
-          "name": "Get My Profile",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/users/me"
-          }
-        },
-        {
-          "name": "Update My Profile",
-          "request": {
-            "method": "PATCH",
-            "header": [],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "fullName",
-                  "value": "Updated User",
-                  "type": "text"
-                },
-                {
-                  "key": "phone",
-                  "value": "01000000001",
-                  "type": "text"
-                },
-                {
-                  "key": "gender",
-                  "value": "male",
-                  "type": "text"
-                },
-                {
-                  "key": "university",
-                  "value": "Cairo University",
-                  "type": "text"
-                },
-                {
-                  "key": "faculty",
-                  "value": "Engineering",
-                  "type": "text"
-                },
-                {
-                  "key": "preferredLanguage",
-                  "value": "en",
-                  "type": "text"
-                },
-                {
-                  "key": "avatar",
-                  "type": "file",
-                  "src": []
-                }
-              ]
-            },
-            "url": "{{baseUrl}}/users/me"
-          }
-        },
-        {
           "name": "List Users",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/users?page=1&limit=20&role=student&isBlocked=false&q="
+            "url": "{{baseUrl}}/users"
           }
         },
         {
@@ -419,7 +255,7 @@
           }
         },
         {
-          "name": "Update User By Admin",
+          "name": "Update User",
           "request": {
             "method": "PATCH",
             "header": [
@@ -430,21 +266,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"isVerified\": true,\n  \"isBlocked\": false,\n  \"preferredLanguage\": \"en\"\n}",
+              "raw": "{\n  \"name\": \"Updated Sokon User\",\n  \"college\": \"Computer Science\",\n  \"fcmToken\": \"test-fcm-token\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/users/{{userId}}"
-          }
-        },
-        {
-          "name": "Delete User",
-          "request": {
-            "method": "DELETE",
-            "header": [],
             "url": "{{baseUrl}}/users/{{userId}}"
           }
         }
@@ -461,7 +289,29 @@
             },
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/apartments?page=1&limit=20&city=&district=&apartmentType=apartment&availability=available&minPrice=1&maxPrice=10000&sort=-createdAt"
+            "url": "{{baseUrl}}/apartments"
+          }
+        },
+        {
+          "name": "Create Apartment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Apartment\",\n  \"description\": \"Student friendly apartment\",\n  \"price\": 4500,\n  \"images\": [],\n  \"video_url\": null,\n  \"bedrooms\": 2,\n  \"bathrooms\": 1,\n  \"living_rooms\": 1,\n  \"floor\": 3,\n  \"max_people\": 3,\n  \"available_people\": 3,\n  \"address\": \"Main Street\",\n  \"city\": \"Assuit\",\n  \"district\": \"فيريال\",\n  \"locationAddress\": \"Main Street, Assuit\",\n  \"lat\": 27.1809,\n  \"lng\": 31.1837,\n  \"verified\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apartments"
           }
         },
         {
@@ -476,157 +326,31 @@
           }
         },
         {
-          "name": "Get My Apartments",
+          "name": "Owner Apartments",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/apartments/mine"
-          }
-        },
-        {
-          "name": "Create Apartment",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data?.apartment?._id) pm.collectionVariables.set('apartmentId', json.data.apartment._id);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "images",
-                  "type": "file",
-                  "src": []
-                },
-                {
-                  "key": "title",
-                  "value": "Sunny Apartment Near University",
-                  "type": "text"
-                },
-                {
-                  "key": "description_ar",
-                  "value": "شقة مناسبة للطلاب بالقرب من الجامعة",
-                  "type": "text"
-                },
-                {
-                  "key": "description_en",
-                  "value": "Student friendly apartment near the university.",
-                  "type": "text"
-                },
-                {
-                  "key": "price",
-                  "value": "4500",
-                  "type": "text"
-                },
-                {
-                  "key": "city",
-                  "value": "Cairo",
-                  "type": "text"
-                },
-                {
-                  "key": "district",
-                  "value": "Giza",
-                  "type": "text"
-                },
-                {
-                  "key": "address",
-                  "value": "Main Street",
-                  "type": "text"
-                },
-                {
-                  "key": "buildingNumber",
-                  "value": "12",
-                  "type": "text"
-                },
-                {
-                  "key": "unitNumber",
-                  "value": "4A",
-                  "type": "text"
-                },
-                {
-                  "key": "apartmentType",
-                  "value": "apartment",
-                  "type": "text"
-                },
-                {
-                  "key": "beds",
-                  "value": "2",
-                  "type": "text"
-                },
-                {
-                  "key": "rooms",
-                  "value": "2",
-                  "type": "text"
-                },
-                {
-                  "key": "bathrooms",
-                  "value": "1",
-                  "type": "text"
-                },
-                {
-                  "key": "floor",
-                  "value": "3",
-                  "type": "text"
-                },
-                {
-                  "key": "amenities",
-                  "value": "wifi,desk,balcony",
-                  "type": "text"
-                },
-                {
-                  "key": "latitude",
-                  "value": "30.0444",
-                  "type": "text"
-                },
-                {
-                  "key": "longitude",
-                  "value": "31.2357",
-                  "type": "text"
-                }
-              ]
-            },
-            "url": "{{baseUrl}}/apartments"
+            "url": "{{baseUrl}}/apartments?ownerId={{userId}}"
           }
         },
         {
           "name": "Update Apartment",
           "request": {
             "method": "PATCH",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "title",
-                  "value": "Updated Sunny Apartment",
-                  "type": "text"
-                },
-                {
-                  "key": "price",
-                  "value": "5000",
-                  "type": "text"
-                },
-                {
-                  "key": "availability",
-                  "value": "available",
-                  "type": "text"
-                },
-                {
-                  "key": "images",
-                  "type": "file",
-                  "src": []
+              "mode": "raw",
+              "raw": "{\n  \"price\": 5000,\n  \"available_people\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
                 }
-              ]
+              }
             },
             "url": "{{baseUrl}}/apartments/{{apartmentId}}"
           }
@@ -645,27 +369,7 @@
       "name": "Bookings",
       "item": [
         {
-          "name": "Get My Bookings",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/bookings/mine?page=1&limit=20&status=pending"
-          }
-        },
-        {
           "name": "Create Booking",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data?.booking?._id) pm.collectionVariables.set('bookingId', json.data.booking._id);"
-                ]
-              }
-            }
-          ],
           "request": {
             "method": "POST",
             "header": [
@@ -676,7 +380,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"apartmentId\": \"{{apartmentId}}\",\n  \"message\": \"I would like to book this apartment.\",\n  \"checkInDate\": \"2026-06-01\",\n  \"checkOutDate\": \"2026-06-30\"\n}",
+              "raw": "{\n  \"apartmentId\": \"{{apartmentId}}\",\n  \"apartmentName\": \"Test Apartment\",\n  \"apartmentAddress\": \"Main Street\",\n  \"apartmentImage\": null,\n  \"ownerId\": \"{{userId}}\",\n  \"ownerName\": \"Owner Name\",\n  \"startDate\": \"2026-07-01T00:00:00.000Z\",\n  \"endDate\": \"2026-07-30T00:00:00.000Z\",\n  \"totalPrice\": 5000,\n  \"people_count\": 1,\n  \"status\": \"pending\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -687,101 +391,23 @@
           }
         },
         {
-          "name": "Cancel Booking",
+          "name": "List My Bookings",
           "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reason\": \"Plans changed\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/bookings/{{bookingId}}/cancel"
-          }
-        },
-        {
-          "name": "Accept Booking",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"note\": \"Your booking request has been accepted.\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/bookings/{{bookingId}}/accept"
-          }
-        },
-        {
-          "name": "Reject Booking",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"note\": \"This apartment is no longer available.\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/bookings/{{bookingId}}/reject"
-          }
-        }
-      ]
-    },
-    {
-      "name": "Reviews",
-      "item": [
-        {
-          "name": "Get Apartment Reviews",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/reviews/apartments/{{apartmentId}}?page=1&limit=20"
+            "url": "{{baseUrl}}/bookings?clientId={{userId}}"
           }
         },
         {
-          "name": "Create Review",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data?.review?._id) pm.collectionVariables.set('reviewId', json.data.review._id);"
-                ]
-              }
-            }
-          ],
+          "name": "List Owner Bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/bookings?ownerId={{userId}}"
+          }
+        },
+        {
+          "name": "Update Booking Status",
           "request": {
             "method": "POST",
             "header": [
@@ -792,22 +418,58 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"apartmentId\": \"{{apartmentId}}\",\n  \"rating\": 5,\n  \"comment\": \"Great place for students.\"\n}",
+              "raw": "{\n  \"status\": \"accepted\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/reviews"
+            "url": "{{baseUrl}}/bookings/{{bookingId}}/status"
           }
         },
         {
-          "name": "Delete Review",
+          "name": "Rate Booking",
           "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": "{{baseUrl}}/reviews/{{reviewId}}"
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/bookings/{{bookingId}}/rating"
+          }
+        },
+        {
+          "name": "RPC Update Booking Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_booking_id\": \"{{bookingId}}\",\n  \"p_status\": \"cancelled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/rpc/update_booking_status_with_capacity"
           }
         }
       ]
@@ -816,11 +478,33 @@
       "name": "Notifications",
       "item": [
         {
-          "name": "Get My Notifications",
+          "name": "Create Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Notification\",\n  \"body\": \"This is a test notification\",\n  \"type\": \"new_booking\",\n  \"receiverId\": \"{{userId}}\",\n  \"isRead\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/notifications"
+          }
+        },
+        {
+          "name": "List Notifications",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/notifications/mine?page=1&limit=20&isRead=false"
+            "url": "{{baseUrl}}/notifications?receiverId={{userId}}"
           }
         },
         {
@@ -832,74 +516,20 @@
           }
         },
         {
-          "name": "Mark All Notifications Read",
+          "name": "Mark All Read",
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": "{{baseUrl}}/notifications/read-all"
+            "url": "{{baseUrl}}/notifications/read-all/{{userId}}"
           }
         }
       ]
     },
     {
-      "name": "Admin",
+      "name": "Chats and Messages",
       "item": [
         {
-          "name": "Block User",
-          "request": {
-            "method": "PATCH",
-            "header": [],
-            "url": "{{baseUrl}}/admin/users/{{userId}}/block"
-          }
-        },
-        {
-          "name": "Unblock User",
-          "request": {
-            "method": "PATCH",
-            "header": [],
-            "url": "{{baseUrl}}/admin/users/{{userId}}/unblock"
-          }
-        },
-        {
-          "name": "Approve Apartment",
-          "request": {
-            "method": "PATCH",
-            "header": [],
-            "url": "{{baseUrl}}/admin/apartments/{{apartmentId}}/approve"
-          }
-        },
-        {
-          "name": "Reject Apartment",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reason\": \"Images or details need improvement.\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/admin/apartments/{{apartmentId}}/reject"
-          }
-        },
-        {
-          "name": "Remove Apartment",
-          "request": {
-            "method": "PATCH",
-            "header": [],
-            "url": "{{baseUrl}}/admin/apartments/{{apartmentId}}/remove"
-          }
-        },
-        {
-          "name": "Create Announcement",
+          "name": "Upsert Chat",
           "request": {
             "method": "POST",
             "header": [
@@ -910,27 +540,196 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Maintenance Notice\",\n  \"content\": \"The platform will be under maintenance tonight.\",\n  \"audience\": \"all\"\n}",
+              "raw": "{\n  \"id\": \"{{chatId}}\",\n  \"users\": [\"{{userId}}\"],\n  \"lastMessage\": \"Hello\",\n  \"displayNames\": {},\n  \"displayPhotos\": {}\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
-            "url": "{{baseUrl}}/admin/announcements"
+            "url": "{{baseUrl}}/chats"
+          }
+        },
+        {
+          "name": "List Chats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/chats?userId={{userId}}"
+          }
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"senderId\": \"{{userId}}\",\n  \"message\": \"Hello from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/chats/{{chatId}}/messages"
+          }
+        },
+        {
+          "name": "List Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/chats/{{chatId}}/messages"
           }
         }
       ]
     },
     {
-      "name": "Analytics",
+      "name": "Storage Cloudinary",
       "item": [
         {
-          "name": "Dashboard",
+          "name": "Upload Profile File",
           "request": {
-            "method": "GET",
+            "method": "POST",
             "header": [],
-            "url": "{{baseUrl}}/analytics/dashboard"
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "folder",
+                  "value": "{{userId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/storage/profiles"
+          }
+        },
+        {
+          "name": "Upload Apartment File",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "folder",
+                  "value": "{{apartmentId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/storage/apartments"
+          }
+        },
+        {
+          "name": "Delete Cloudinary Asset",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"public_id\": \"{{cloudinaryPublicId}}\",\n  \"resource_type\": \"image\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/storage/apartments"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Function Replacements",
+      "item": [
+        {
+          "name": "Send Booking Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ownerId\": \"{{userId}}\",\n  \"bookingId\": \"{{bookingId}}\",\n  \"title\": \"New Booking Request\",\n  \"body\": \"Test booking notification\",\n  \"type\": \"new_booking\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/functions/send-booking-notification"
+          }
+        },
+        {
+          "name": "Send Chat Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{userId}}\",\n  \"senderId\": \"{{userId}}\",\n  \"chatId\": \"{{chatId}}\",\n  \"title\": \"New message\",\n  \"body\": \"Hello\",\n  \"type\": \"new_message\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/functions/send-chat-notification"
+          }
+        },
+        {
+          "name": "Send Booking Status Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{userId}}\",\n  \"bookingId\": \"{{bookingId}}\",\n  \"title\": \"Booking approved\",\n  \"body\": \"Your booking was approved\",\n  \"type\": \"booking_accepted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/functions/send-booking-status-notification"
           }
         }
       ]

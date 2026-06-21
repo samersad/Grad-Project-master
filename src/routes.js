@@ -21,6 +21,7 @@ router.post('/auth/login', auth.login);
 router.post('/auth/logout', authenticate, auth.logout);
 router.get('/auth/me', authenticate, auth.me);
 router.post('/auth/password-reset', auth.resetPassword);
+router.post('/auth/password-reset/confirm', auth.confirmPasswordReset);
 router.patch('/auth/password', authenticate, auth.updatePassword);
 
 router.get('/users', authenticate, users.listUsers);
