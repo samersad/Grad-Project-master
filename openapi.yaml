@@ -1,0 +1,53 @@
+openapi: 3.0.0
+info:
+  title: SOKON Backend API
+  version: 1.0.0
+  description: REST API documentation for SOKON student housing management platform.
+servers:
+  - url: http://localhost:5000/api/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiSuccess:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+    ApiError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      summary: Login and receive JWT tokens
+      tags:
+        - Auth
+tags:
+  - name: Auth
+  - name: Users
+  - name: Apartments
+  - name: Bookings
+  - name: Reviews
+  - name: Notifications
+  - name: Admin
+  - name: Analytics

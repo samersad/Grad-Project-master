@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    container_name: sokon-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+    volumes:
+      - ./uploads:/app/uploads
+  mongo:
+    image: mongo:7
+    container_name: sokon-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+volumes:
+  mongo_data:
