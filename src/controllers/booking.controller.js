@@ -2,28 +2,92 @@ const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
 const Booking = require('../models/booking.model');
 const Apartment = require('../models/apartment.model');
+const Notification = require('../models/notification.model');
 const { sanitizePayload, fields, applyFilters, parseSort } = require('../utils/supabaseShape');
 
 const acceptedStatuses = new Set(['accepted', 'confirmed']);
-const cancelledStatuses = new Set(['cancelled', 'canceled', 'rejected']);
+const terminalReleaseStatuses = new Set(['pending', 'cancelled', 'canceled', 'rejected']);
+const supportedStatuses = new Set(['pending', 'accepted', 'confirmed', 'cancelled', 'canceled', 'rejected']);
+
+function normalizeStatus(status) {
+  const value = String(status || '').toLowerCase().trim();
+  if (!value) throw new ApiError(422, 'status is required');
+  if (!supportedStatuses.has(value)) throw new ApiError(422, `Unsupported booking status: ${value}`);
+  return value;
+}
+
+function peopleCount(booking) {
+  return Math.max(Number(booking.people_count || 1), 1);
+}
+
+async function createNotification(payload) {
+  try {
+    return await Notification.create(payload);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function buildBookingRequestBody(booking) {
+  const count = peopleCount(booking);
+  if (booking.clientName && booking.apartmentName && booking.ownerName) {
+    return `${booking.clientName} requested ${booking.apartmentName} for ${count} ${count === 1 ? 'person' : 'people'} with ${booking.ownerName}.`;
+  }
+  if (booking.clientName && booking.apartmentName) {
+    return `${booking.clientName} submitted a booking request for ${booking.apartmentName} for ${count} ${count === 1 ? 'person' : 'people'}.`;
+  }
+  return 'A new booking request has been submitted.';
+}
+
+function statusNotification(booking, status, changedByName) {
+  const isAccepted = acceptedStatuses.has(status);
+  const isCancelled = status === 'cancelled' || status === 'canceled';
+  const isRejected = status === 'rejected';
+  if (!isAccepted && !isCancelled && !isRejected) return null;
+
+  const title = isAccepted ? 'Booking approved' : isCancelled ? 'Booking cancelled' : 'Booking rejected';
+  const type = isAccepted ? 'booking_accepted' : isCancelled ? 'booking_cancelled' : 'booking_rejected';
+  const apartmentName = booking.apartmentName?.trim();
+  const managerName = changedByName?.trim() || booking.ownerName?.trim();
+  let body = isAccepted ? 'Your booking request has been approved.' : isCancelled ? 'Your booking has been cancelled.' : 'Your booking request was rejected.';
+
+  if (apartmentName && managerName) {
+    body = isAccepted
+      ? `${managerName} approved your booking for ${apartmentName}.`
+      : isCancelled
+        ? `${managerName} cancelled the booking for ${apartmentName}.`
+        : `${managerName} rejected the booking request for ${apartmentName}.`;
+  } else if (apartmentName) {
+    body = isAccepted
+      ? `Your booking for ${apartmentName} has been approved.`
+      : isCancelled
+        ? `Your booking for ${apartmentName} has been cancelled.`
+        : `Your booking request for ${apartmentName} was rejected.`;
+  }
+
+  return { title, body, type };
+}
 
 async function adjustCapacity(booking, nextStatus) {
   const apartment = booking.apartmentId ? await Apartment.findOne({ id: booking.apartmentId }) : null;
-  if (!apartment) return;
+  if (!apartment) throw new ApiError(404, 'Apartment not found for this booking');
 
-  const people = booking.people_count || 1;
-  const wasAccepted = acceptedStatuses.has(booking.status);
+  const previousStatus = String(booking.status || 'pending').toLowerCase().trim();
+  const count = peopleCount(booking);
+  const wasAccepted = acceptedStatuses.has(previousStatus);
   const willBeAccepted = acceptedStatuses.has(nextStatus);
-  const willRelease = wasAccepted && cancelledStatuses.has(nextStatus);
+  const willRelease = wasAccepted && terminalReleaseStatuses.has(nextStatus);
 
   if (!wasAccepted && willBeAccepted) {
-    if (apartment.available_people < people) throw new ApiError(409, 'Not enough available capacity');
-    apartment.available_people -= people;
+    if ((apartment.available_people || 0) < count) {
+      throw new ApiError(409, `Only ${apartment.available_people || 0} people can still rent this apartment`);
+    }
+    apartment.available_people -= count;
+    await apartment.save();
   } else if (willRelease) {
-    apartment.available_people = Math.min(apartment.max_people, apartment.available_people + people);
+    apartment.available_people = Math.min(apartment.max_people || count, (apartment.available_people || 0) + count);
+    await apartment.save();
   }
-
-  await apartment.save();
 }
 
 const listBookings = asyncHandler(async (req, res) => {
@@ -34,8 +98,24 @@ const listBookings = asyncHandler(async (req, res) => {
     apartmentId: req.query.apartmentId,
     status: req.query.status,
   });
+
+  const endDateGte = req.query.endDateGte || req.query.endDate_gte || req.query.gteEndDate;
+  if (endDateGte) filter.endDate = { $gte: new Date(endDateGte) };
+
   const bookings = await Booking.find(filter).sort(parseSort(req.query, '-createdAt'));
   return res.json(bookings);
+});
+
+const hasActiveBookingForApartment = asyncHandler(async (req, res) => {
+  const { userId, apartmentId } = req.query;
+  if (!userId || !apartmentId) throw new ApiError(422, 'userId and apartmentId are required');
+  const bookings = await Booking.find({
+    clientId: userId,
+    apartmentId,
+    endDate: { $gte: new Date() },
+  }).limit(20);
+  const active = bookings.some((booking) => !['cancelled', 'canceled', 'rejected'].includes(String(booking.status || '').toLowerCase().trim()));
+  return res.json({ active });
 });
 
 const getBooking = asyncHandler(async (req, res) => {
@@ -49,34 +129,61 @@ const createBooking = asyncHandler(async (req, res) => {
   if (!payload.clientId) payload.clientId = req.user.id;
   if (!payload.clientName) payload.clientName = req.user.name;
   if (!payload.status) payload.status = 'pending';
+  if (!payload.createdAt) payload.createdAt = new Date();
 
   const booking = await Booking.create(payload);
+  await createNotification({
+    title: 'Booking request received',
+    body: buildBookingRequestBody(booking),
+    createdAt: new Date(),
+    type: 'new_booking',
+    isRead: false,
+    receiverId: booking.ownerId,
+    bookingId: booking.id,
+  });
   return res.status(201).json(booking);
 });
 
 const updateStatus = asyncHandler(async (req, res) => {
-  const status = String(req.body.status || req.body.p_status || '').toLowerCase().trim();
+  const status = normalizeStatus(req.body.status || req.body.p_status);
   const id = req.params.id || req.body.p_booking_id;
-  if (!status) throw new ApiError(422, 'status is required');
+  if (!id) throw new ApiError(422, 'booking id is required');
 
   const booking = await Booking.findOne({ id });
   if (!booking) throw new ApiError(404, 'Booking not found');
   if (![booking.clientId, booking.ownerId].includes(req.user.id) && req.user.role !== 'admin') throw new ApiError(403, 'Forbidden');
+  if (['accepted', 'confirmed', 'rejected'].includes(status) && booking.ownerId !== req.user.id && req.user.role !== 'admin') {
+    throw new ApiError(403, 'Only the owner can approve or reject this booking');
+  }
 
   await adjustCapacity(booking, status);
   booking.status = status;
   await booking.save();
+
+  const notification = statusNotification(booking, status, req.body.changedByName);
+  if (notification && booking.clientId) {
+    await createNotification({
+      ...notification,
+      createdAt: new Date(),
+      isRead: false,
+      receiverId: booking.clientId,
+      bookingId: booking.id,
+    });
+  }
+
   return res.json(booking);
 });
 
 const rateBooking = asyncHandler(async (req, res) => {
   const rating = Number(req.body.rating || req.body.p_rating);
   const id = req.params.id || req.body.p_booking_id;
+  if (!id) throw new ApiError(422, 'booking id is required');
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ApiError(422, 'rating must be 1-5');
 
   const booking = await Booking.findOne({ id });
   if (!booking) throw new ApiError(404, 'Booking not found');
-  if (booking.clientId !== req.user.id && req.user.role !== 'admin') throw new ApiError(403, 'Forbidden');
+  if (booking.clientId !== req.user.id && req.user.role !== 'admin') throw new ApiError(403, 'Only the booking client can rate this apartment');
+  if (!acceptedStatuses.has(String(booking.status || 'pending').toLowerCase().trim())) throw new ApiError(409, 'Only accepted bookings can be rated');
 
   booking.rating = rating;
   booking.rated_at = new Date();
@@ -96,6 +203,7 @@ const rateBooking = asyncHandler(async (req, res) => {
 
 module.exports = {
   listBookings,
+  hasActiveBookingForApartment,
   getBooking,
   createBooking,
   updateStatus,

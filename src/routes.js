@@ -38,6 +38,7 @@ router.patch('/apartments/:id', authenticate, apartments.updateApartment);
 router.delete('/apartments/:id', authenticate, apartments.deleteApartment);
 
 router.get('/bookings', authenticate, bookings.listBookings);
+router.get('/bookings/active/check', authenticate, bookings.hasActiveBookingForApartment);
 router.get('/bookings/:id', authenticate, bookings.getBooking);
 router.post('/bookings', authenticate, bookings.createBooking);
 router.patch('/bookings/:id/status', authenticate, bookings.updateStatus);
@@ -67,3 +68,4 @@ router.post('/functions/send-chat-notification', authenticate, functions.sendCha
 router.post('/functions/send-booking-status-notification', authenticate, functions.sendBookingStatusNotification);
 
 module.exports = router;
+

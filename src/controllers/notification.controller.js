@@ -9,7 +9,7 @@ const listNotifications = asyncHandler(async (req, res) => {
     receiverId: req.query.receiverId,
     senderId: req.query.senderId,
     type: req.query.type,
-    isRead: req.query.isRead,
+    isRead: req.query.isRead === undefined ? undefined : req.query.isRead === true || req.query.isRead === 'true',
   });
   const notifications = await Notification.find(filter).sort(parseSort(req.query, '-createdAt'));
   return res.json(notifications);
@@ -41,3 +41,4 @@ module.exports = {
   markRead,
   markAllRead,
 };
+

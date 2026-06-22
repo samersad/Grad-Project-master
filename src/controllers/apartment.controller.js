@@ -9,7 +9,7 @@ const listApartments = asyncHandler(async (req, res) => {
     ownerId: req.query.ownerId,
     city: req.query.city,
     district: req.query.district,
-    verified: req.query.verified,
+    verified: req.query.verified === undefined ? undefined : req.query.verified === true || req.query.verified === 'true',
   });
   const apartments = await Apartment.find(filter).sort(parseSort(req.query, '-createdAt'));
   return res.json(apartments);
@@ -58,3 +58,4 @@ module.exports = {
   updateApartment,
   deleteApartment,
 };
+

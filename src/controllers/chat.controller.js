@@ -5,16 +5,50 @@ const Message = require('../models/message.model');
 const Notification = require('../models/notification.model');
 const { sanitizePayload, fields } = require('../utils/supabaseShape');
 
+function parseTimestamp(value) {
+  if (!value) return null;
+  const time = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(time.getTime()) ? null : time;
+}
+
+function compareTimestampDesc(a, b) {
+  const aTime = parseTimestamp(a.timestamp);
+  const bTime = parseTimestamp(b.timestamp);
+  if (!aTime && !bTime) return 0;
+  if (!aTime) return 1;
+  if (!bTime) return -1;
+  return bTime.getTime() - aTime.getTime();
+}
+
+function compareMessagesAsc(a, b) {
+  const aTime = parseTimestamp(a.timestamp);
+  const bTime = parseTimestamp(b.timestamp);
+  if (!aTime && !bTime) return String(a.id || '').localeCompare(String(b.id || ''));
+  if (!aTime) return -1;
+  if (!bTime) return 1;
+  const timeComparison = aTime.getTime() - bTime.getTime();
+  return timeComparison || String(a.id || '').localeCompare(String(b.id || ''));
+}
+
+function buildChatPreview(message) {
+  const normalized = String(message || '').trim();
+  if (!normalized) return 'You have a new message.';
+  return normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized;
+}
+
 const listChats = asyncHandler(async (req, res) => {
-  const filter = {};
-  if (req.query.userId) filter.users = req.query.userId;
-  const chats = await Chat.find(filter).sort('-timestamp');
-  return res.json(chats);
+  const chats = await Chat.find({}).sort('-timestamp');
+  const filtered = req.query.userId
+    ? chats.filter((chat) => Array.isArray(chat.users) && chat.users.includes(req.query.userId))
+    : chats;
+  filtered.sort(compareTimestampDesc);
+  return res.json(filtered);
 });
 
 const upsertChat = asyncHandler(async (req, res) => {
   const payload = sanitizePayload(req.body, fields.chat);
   if (!payload.id) throw new ApiError(422, 'id is required');
+  if (!payload.timestamp) payload.timestamp = new Date();
 
   const chat = await Chat.findOneAndUpdate(
     { id: payload.id },
@@ -28,6 +62,7 @@ const listMessages = asyncHandler(async (req, res) => {
   const chatId = req.params.chatId || req.query.chat_id || req.query.chatId;
   if (!chatId) throw new ApiError(422, 'chat_id is required');
   const messages = await Message.find({ chat_id: chatId }).sort('timestamp id');
+  messages.sort(compareMessagesAsc);
   return res.json(messages);
 });
 
@@ -35,11 +70,12 @@ const sendMessage = asyncHandler(async (req, res) => {
   const chatId = req.params.chatId || req.body.chat_id;
   if (!chatId) throw new ApiError(422, 'chat_id is required');
 
+  const now = new Date();
   const chatPayload = sanitizePayload(req.body.chatMetadata || {}, fields.chat);
   const messagePayload = sanitizePayload(req.body.messageData || req.body, fields.message);
   messagePayload.chat_id = chatId;
   if (!messagePayload.senderId) messagePayload.senderId = req.user.id;
-  messagePayload.timestamp = new Date();
+  if (!messagePayload.timestamp) messagePayload.timestamp = now;
 
   await Chat.findOneAndUpdate(
     { id: chatId },
@@ -57,12 +93,13 @@ const sendMessage = asyncHandler(async (req, res) => {
   if (notificationData?.receiverId) {
     await Notification.create({
       title: `New message from ${notificationData.senderName || req.user.name}`,
-      body: notificationData.message || message.message,
+      body: buildChatPreview(notificationData.message || message.message),
       type: 'new_message',
       receiverId: notificationData.receiverId,
       senderId: notificationData.senderId || req.user.id,
       chatId,
       isRead: false,
+      createdAt: new Date(),
     });
   }
 
