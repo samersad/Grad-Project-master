@@ -18,6 +18,7 @@ const upload = multer({
 
 router.post('/auth/register', auth.register);
 router.post('/auth/login', auth.login);
+router.post('/auth/exchange', authenticate, auth.exchangeSession);
 router.post('/auth/logout', authenticate, auth.logout);
 router.get('/auth/me', authenticate, auth.me);
 router.post('/auth/password-reset', auth.resetPassword);

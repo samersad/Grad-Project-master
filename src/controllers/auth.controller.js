@@ -92,6 +92,12 @@ const updatePassword = asyncHandler(async (req, res) => {
   return res.json(req.user.toJSON());
 });
 
+const exchangeSession = asyncHandler(async (req, res) => {
+  if (!req.user) throw new ApiError(401, 'Authentication required');
+  const session = buildSession(req.user);
+  return res.json({ user: req.user.toJSON(), session });
+});
+
 module.exports = {
   register,
   login,
@@ -100,4 +106,5 @@ module.exports = {
   resetPassword,
   confirmPasswordReset,
   updatePassword,
+  exchangeSession,
 };
