@@ -24,6 +24,7 @@ router.get('/auth/me', authenticate, auth.me);
 router.post('/auth/password-reset', auth.resetPassword);
 router.post('/auth/password-reset/confirm', auth.confirmPasswordReset);
 router.patch('/auth/password', authenticate, auth.updatePassword);
+router.delete('/auth/account', authenticate, auth.deleteAccount);
 
 router.get('/users', authenticate, users.listUsers);
 router.get('/users/:id', optionalAuthenticate, users.getUser);
