@@ -31,6 +31,7 @@ router.put('/users/:id', authenticate, users.updateUser);
 router.patch('/users/:id', authenticate, users.updateUser);
 
 router.get('/apartments', optionalAuthenticate, apartments.listApartments);
+router.get('/apartments/search', optionalAuthenticate, apartments.searchApartments);
 router.get('/apartments/:id', optionalAuthenticate, apartments.getApartment);
 router.post('/apartments', authenticate, apartments.createApartment);
 router.put('/apartments/:id', authenticate, apartments.updateApartment);

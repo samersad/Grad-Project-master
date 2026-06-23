@@ -3,6 +3,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const Apartment = require('../models/apartment.model');
 const { sanitizePayload, fields, applyFilters, parseSort } = require('../utils/supabaseShape');
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const listApartments = asyncHandler(async (req, res) => {
   const filter = applyFilters({}, {
     id: req.query.id,
@@ -15,6 +17,23 @@ const listApartments = asyncHandler(async (req, res) => {
   return res.json(apartments);
 });
 
+const searchApartments = asyncHandler(async (req, res) => {
+  const query = String(req.query.query || req.query.q || '').trim();
+  if (!query) return res.json([]);
+
+  const searchRegex = new RegExp(escapeRegExp(query), 'i');
+  const filter = {
+    $or: [
+      { name: searchRegex },
+      { description: searchRegex },
+      { address: searchRegex },
+      { locationAddress: searchRegex },
+    ],
+  };
+
+  const apartments = await Apartment.find(filter).sort(parseSort(req.query, '-createdAt'));
+  return res.json(apartments);
+});
 const getApartment = asyncHandler(async (req, res) => {
   const apartment = await Apartment.findOne({ id: req.params.id });
   if (!apartment) throw new ApiError(404, 'Apartment not found');
@@ -53,6 +72,7 @@ const deleteApartment = asyncHandler(async (req, res) => {
 
 module.exports = {
   listApartments,
+  searchApartments,
   getApartment,
   createApartment,
   updateApartment,
