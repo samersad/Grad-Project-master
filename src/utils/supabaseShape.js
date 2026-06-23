@@ -17,7 +17,7 @@ function applyFilters(target, filter) {
 }
 
 const fields = {
-  user: ['id', 'name', 'email', 'college', 'phoneNumber', 'gender', 'role', 'photoUrl', 'fcmToken', 'createdAt'],
+  user: ['id', 'name', 'email', 'college', 'phoneNumber', 'gender', 'role', 'authProvider', 'photoUrl', 'fcmToken', 'createdAt'],
   apartment: [
     'id',
     'name',

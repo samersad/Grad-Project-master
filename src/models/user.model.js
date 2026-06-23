@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema(
     phoneNumber: { type: String, default: null },
     gender: { type: String, default: null },
     role: { type: String, enum: ['owner', 'client', 'admin', null], default: null },
+    authProvider: { type: String, enum: ['password', 'google'], default: 'password' },
     photoUrl: { type: String, default: null },
     fcmToken: { type: String, default: null },
     passwordHash: { type: String, required: true, select: false },

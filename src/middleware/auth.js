@@ -31,14 +31,15 @@ function extractExternalUserProfile(decoded) {
     normalizeClaimString(decoded?.user_metadata?.role) ||
     normalizeClaimString(decoded?.app_metadata?.role) ||
     normalizeClaimString(decoded?.role) ||
-    'client';
-  const role = appRoles.has(rawRole) ? rawRole : 'client';
+    null;
+  const role = rawRole && appRoles.has(rawRole) ? rawRole : null;
 
   return {
     id: String(decoded.sub || decoded.user_id || decoded.id || '').trim(),
     email,
     name: fullName,
     role,
+    authProvider: 'google',
     photoUrl:
       normalizeClaimString(decoded?.user_metadata?.avatar_url) ||
       normalizeClaimString(decoded?.user_metadata?.picture) ||
@@ -63,6 +64,7 @@ async function resolveExternalUser(decoded) {
     if (profile.photoUrl) existingUser.photoUrl = profile.photoUrl;
     if (profile.phoneNumber) existingUser.phoneNumber = profile.phoneNumber;
     if (profile.role && !existingUser.role) existingUser.role = profile.role;
+    if (!existingUser.authProvider) existingUser.authProvider = 'google';
     if (!existingUser.passwordHash) existingUser.passwordHash = 'external-auth-placeholder';
     await existingUser.save();
     return existingUser;
@@ -73,6 +75,7 @@ async function resolveExternalUser(decoded) {
     name: profile.name,
     email: profile.email || `${profile.id}@external.local`,
     role: profile.role,
+    authProvider: 'google',
     photoUrl: profile.photoUrl,
     phoneNumber: profile.phoneNumber,
     passwordHash: 'external-auth-placeholder',

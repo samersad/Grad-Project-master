@@ -17,7 +17,7 @@ const register = asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
   const profile = sanitizePayload(req.body, fields.user);
-  const user = await User.create({ ...profile, email, name, passwordHash });
+  const user = await User.create({ ...profile, email, name, authProvider: 'password', passwordHash });
   const session = buildSession(user);
 
   return res.status(201).json({ user: user.toJSON(), session });
@@ -106,8 +106,14 @@ const deleteAccount = asyncHandler(async (req, res) => {
   const user = await User.findOne({ id: req.user.id }).select('+passwordHash');
   if (!user) throw new ApiError(404, 'User not found');
 
-  const matches = await bcrypt.compare(password, user.passwordHash);
-  if (!matches) throw new ApiError(401, 'Invalid password');
+  const isGoogleAccount =
+    user.authProvider === 'google' || user.passwordHash === 'external-auth-placeholder';
+
+  if (!isGoogleAccount) {
+    if (!password) throw new ApiError(422, 'password is required to confirm account deletion');
+    const matches = await bcrypt.compare(password, user.passwordHash);
+    if (!matches) throw new ApiError(401, 'Invalid password');
+  }
 
   const Apartment = require('../models/apartment.model');
   const Booking = require('../models/booking.model');
