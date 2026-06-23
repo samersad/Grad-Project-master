@@ -82,9 +82,41 @@ function verifyBackendToken(token) {
 }
 
 async function verifySupabaseToken(token) {
-  if (!env.supabase.jwtSecret) return null;
-  const decoded = jwt.verify(token, env.supabase.jwtSecret);
-  return resolveExternalUser(decoded);
+  if (env.supabase.url && (env.supabase.anonKey || env.supabase.serviceRoleKey)) {
+    const user = await verifySupabaseTokenWithAuthApi(token);
+    if (user) return user;
+  }
+
+  if (env.supabase.jwtSecret) {
+    const decoded = jwt.verify(token, env.supabase.jwtSecret);
+    return resolveExternalUser(decoded);
+  }
+
+  return null;
+}
+
+async function verifySupabaseTokenWithAuthApi(token) {
+  const apiKey = env.supabase.serviceRoleKey || env.supabase.anonKey;
+  const response = await fetch(`${env.supabase.url}/auth/v1/user`, {
+    headers: {
+      apikey: apiKey,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const user = await response.json();
+  return resolveExternalUser({
+    sub: user.id,
+    email: user.email,
+    phone: user.phone,
+    user_metadata: user.user_metadata,
+    app_metadata: user.app_metadata,
+    role: user.role,
+  });
 }
 
 const authenticate = asyncHandler(async (req, _res, next) => {

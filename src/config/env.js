@@ -26,6 +26,9 @@ const env = {
     resetExpiresIn: process.env.JWT_RESET_EXPIRES_IN || '15m',
   },
   supabase: {
+    url: process.env.SUPABASE_URL || null,
+    anonKey: process.env.SUPABASE_ANON_KEY || null,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || null,
     jwtSecret: process.env.SUPABASE_JWT_SECRET || null,
   },
   cookieSecure: String(process.env.COOKIE_SECURE || 'false') === 'true',
