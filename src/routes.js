@@ -53,10 +53,13 @@ router.patch('/notifications/read-all/:receiverId', authenticate, notifications.
 
 router.get('/chats', authenticate, chats.listChats);
 router.post('/chats', authenticate, chats.upsertChat);
+router.get('/chats/:chatId', authenticate, chats.getChat);
+router.delete('/chats/:chatId', authenticate, chats.deleteChat);
 router.get('/chats/:chatId/messages', authenticate, chats.listMessages);
 router.post('/chats/:chatId/messages', authenticate, chats.sendMessage);
 router.get('/messages', authenticate, chats.listMessages);
 router.post('/messages', authenticate, chats.sendMessage);
+router.delete('/messages/:id', authenticate, chats.deleteMessage);
 
 router.post('/storage/:bucket', authenticate, upload.single('file'), storage.upload);
 router.delete('/storage/:bucket', authenticate, storage.remove);
