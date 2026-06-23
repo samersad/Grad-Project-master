@@ -20,6 +20,24 @@ function peopleCount(booking) {
   return Math.max(Number(booking.people_count || 1), 1);
 }
 
+function bookingIdFromRequest(req) {
+  const paramsId = req.params.id;
+  const bodyId = req.body.bookingId || req.body.booking_id || req.body.bookingID || req.body.p_booking_id || req.body.id || req.body._id;
+  const queryId = req.query.bookingId || req.query.booking_id || req.query.bookingID || req.query.p_booking_id || req.query.id || req.query._id;
+  const value = paramsId || bodyId || queryId;
+  return value ? String(value).trim() : '';
+}
+
+function serializeBooking(booking) {
+  const data = booking?.toJSON ? booking.toJSON() : booking;
+  if (!data) return data;
+  return {
+    ...data,
+    bookingId: data.id,
+    booking_id: data.id,
+  };
+}
+
 async function createNotification(payload) {
   try {
     return await Notification.create(payload);
@@ -103,7 +121,7 @@ const listBookings = asyncHandler(async (req, res) => {
   if (endDateGte) filter.endDate = { $gte: new Date(endDateGte) };
 
   const bookings = await Booking.find(filter).sort(parseSort(req.query, '-createdAt'));
-  return res.json(bookings);
+  return res.json(bookings.map(serializeBooking));
 });
 
 const hasActiveBookingForApartment = asyncHandler(async (req, res) => {
@@ -121,7 +139,7 @@ const hasActiveBookingForApartment = asyncHandler(async (req, res) => {
 const getBooking = asyncHandler(async (req, res) => {
   const booking = await Booking.findOne({ id: req.params.id });
   if (!booking) throw new ApiError(404, 'Booking not found');
-  return res.json(booking);
+  return res.json(serializeBooking(booking));
 });
 
 const createBooking = asyncHandler(async (req, res) => {
@@ -141,12 +159,12 @@ const createBooking = asyncHandler(async (req, res) => {
     receiverId: booking.ownerId,
     bookingId: booking.id,
   });
-  return res.status(201).json(booking);
+  return res.status(201).json(serializeBooking(booking));
 });
 
 const updateStatus = asyncHandler(async (req, res) => {
-  const status = normalizeStatus(req.body.status || req.body.p_status);
-  const id = req.params.id || req.body.p_booking_id;
+  const status = normalizeStatus(req.body.status || req.body.new_status || req.body.p_status);
+  const id = bookingIdFromRequest(req);
   if (!id) throw new ApiError(422, 'booking id is required');
 
   const booking = await Booking.findOne({ id });
@@ -171,12 +189,12 @@ const updateStatus = asyncHandler(async (req, res) => {
     });
   }
 
-  return res.json(booking);
+  return res.json(serializeBooking(booking));
 });
 
 const rateBooking = asyncHandler(async (req, res) => {
   const rating = Number(req.body.rating || req.body.p_rating);
-  const id = req.params.id || req.body.p_booking_id;
+  const id = bookingIdFromRequest(req);
   if (!id) throw new ApiError(422, 'booking id is required');
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ApiError(422, 'rating must be 1-5');
 
@@ -198,7 +216,7 @@ const rateBooking = asyncHandler(async (req, res) => {
     await apartment.save();
   }
 
-  return res.json(booking);
+  return res.json(serializeBooking(booking));
 });
 
 module.exports = {
