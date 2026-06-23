@@ -4,6 +4,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const env = require('../config/env');
 const User = require('../models/user.model');
 
+const appRoles = new Set(['owner', 'client', 'admin']);
+
 function getToken(req) {
   const header = req.headers.authorization || '';
   if (header.startsWith('Bearer ')) return header.slice(7);
@@ -25,11 +27,12 @@ function extractExternalUserProfile(decoded) {
     email?.split('@')[0] ||
     'External User';
 
-  const role =
+  const rawRole =
     normalizeClaimString(decoded?.user_metadata?.role) ||
     normalizeClaimString(decoded?.app_metadata?.role) ||
     normalizeClaimString(decoded?.role) ||
     'client';
+  const role = appRoles.has(rawRole) ? rawRole : 'client';
 
   return {
     id: String(decoded.sub || decoded.user_id || decoded.id || '').trim(),
