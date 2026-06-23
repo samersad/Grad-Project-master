@@ -3,6 +3,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const Chat = require('../models/chat.model');
 const Message = require('../models/message.model');
 const Notification = require('../models/notification.model');
+const User = require('../models/user.model');
+const { sendPushToToken } = require('../services/firebase.service');
 const { sanitizePayload, fields } = require('../utils/supabaseShape');
 
 function parseTimestamp(value) {
@@ -105,9 +107,11 @@ const sendMessage = asyncHandler(async (req, res) => {
   const message = await Message.create(messagePayload);
   const notificationData = req.body.notificationData;
   if (notificationData?.receiverId) {
+    const title = `New message from ${notificationData.senderName || req.user.name}`;
+    const body = buildChatPreview(notificationData.message || message.message);
     await Notification.create({
-      title: `New message from ${notificationData.senderName || req.user.name}`,
-      body: buildChatPreview(notificationData.message || message.message),
+      title,
+      body,
       type: 'new_message',
       receiverId: notificationData.receiverId,
       senderId: notificationData.senderId || req.user.id,
@@ -115,6 +119,23 @@ const sendMessage = asyncHandler(async (req, res) => {
       isRead: false,
       createdAt: new Date(),
     });
+
+    const receiver = await User.findOne({ id: notificationData.receiverId });
+    if (receiver?.fcmToken) {
+      await sendPushToToken({
+        token: receiver.fcmToken,
+        title,
+        body,
+        imageUrl: req.user.photoUrl,
+        data: {
+          type: 'new_message',
+          receiverId: notificationData.receiverId,
+          senderId: notificationData.senderId || req.user.id,
+          chatId,
+          imageUrl: req.user.photoUrl,
+        },
+      });
+    }
   }
 
   return res.status(201).json(message);

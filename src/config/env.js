@@ -52,6 +52,14 @@ const env = {
     apiSecret: process.env.CLOUDINARY_API_SECRET,
     uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET,
   },
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID || null,
+    serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || null,
+    serviceAccountPath:
+      process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
+      process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+      null,
+  },
   rateLimit: {
     windowMinutes: Number(process.env.RATE_LIMIT_WINDOW_MINUTES || 15),
     maxRequests: Number(process.env.RATE_LIMIT_MAX_REQUESTS || 300),
