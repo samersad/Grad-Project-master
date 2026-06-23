@@ -45,6 +45,7 @@ const createApartment = asyncHandler(async (req, res) => {
   if (!payload.ownerId) payload.ownerId = req.user.id;
   if (!payload.ownerName) payload.ownerName = req.user.name;
   if (!payload.ownerPhotoUrl) payload.ownerPhotoUrl = req.user.photoUrl;
+  payload.verified = false;
 
   const apartment = await Apartment.create(payload);
   return res.status(201).json(apartment);
@@ -57,6 +58,7 @@ const updateApartment = asyncHandler(async (req, res) => {
 
   const payload = sanitizePayload(req.body, fields.apartment);
   delete payload.id;
+  delete payload.verified;
   Object.assign(apartment, payload);
   await apartment.save();
   return res.json(apartment);
@@ -70,6 +72,25 @@ const deleteApartment = asyncHandler(async (req, res) => {
   return res.json([apartment]);
 });
 
+const setApartmentVerification = asyncHandler(async (req, res) => {
+  const apartment = await Apartment.findOne({ id: req.params.id });
+  if (!apartment) throw new ApiError(404, 'Apartment not found');
+
+  const rawVerified = req.body?.verified;
+  const verified =
+    typeof rawVerified === 'boolean'
+      ? rawVerified
+      : rawVerified === 'true'
+        ? true
+        : rawVerified === 'false'
+          ? false
+          : !apartment.verified;
+
+  apartment.verified = verified;
+  await apartment.save();
+  return res.json(apartment);
+});
+
 module.exports = {
   listApartments,
   searchApartments,
@@ -77,5 +98,6 @@ module.exports = {
   createApartment,
   updateApartment,
   deleteApartment,
+  setApartmentVerification,
 };
 

@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { authenticate, optionalAuthenticate } = require('./middleware/auth');
+const { authenticate, optionalAuthenticate, authorizeRoles } = require('./middleware/auth');
 const auth = require('./controllers/auth.controller');
 const users = require('./controllers/user.controller');
 const apartments = require('./controllers/apartment.controller');
@@ -38,6 +38,7 @@ router.get('/apartments/:id', optionalAuthenticate, apartments.getApartment);
 router.post('/apartments', authenticate, apartments.createApartment);
 router.put('/apartments/:id', authenticate, apartments.updateApartment);
 router.patch('/apartments/:id', authenticate, apartments.updateApartment);
+router.patch('/apartments/:id/verify', authenticate, authorizeRoles('admin'), apartments.setApartmentVerification);
 router.delete('/apartments/:id', authenticate, apartments.deleteApartment);
 
 router.get('/bookings', authenticate, bookings.listBookings);
