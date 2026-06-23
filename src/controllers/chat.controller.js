@@ -45,6 +45,12 @@ const listChats = asyncHandler(async (req, res) => {
   return res.json(filtered);
 });
 
+const getChat = asyncHandler(async (req, res) => {
+  const chat = await Chat.findOne({ id: req.params.chatId });
+  if (!chat) throw new ApiError(404, 'Chat not found');
+  return res.json(chat);
+});
+
 const upsertChat = asyncHandler(async (req, res) => {
   const payload = sanitizePayload(req.body, fields.chat);
   if (!payload.id) throw new ApiError(422, 'id is required');
@@ -56,6 +62,14 @@ const upsertChat = asyncHandler(async (req, res) => {
     { new: true, upsert: true, runValidators: true },
   );
   return res.status(201).json(chat);
+});
+
+const deleteChat = asyncHandler(async (req, res) => {
+  const chat = await Chat.findOne({ id: req.params.chatId });
+  if (!chat) throw new ApiError(404, 'Chat not found');
+  await Message.deleteMany({ chat_id: req.params.chatId });
+  await chat.deleteOne();
+  return res.json([chat]);
 });
 
 const listMessages = asyncHandler(async (req, res) => {
@@ -106,9 +120,19 @@ const sendMessage = asyncHandler(async (req, res) => {
   return res.status(201).json(message);
 });
 
+const deleteMessage = asyncHandler(async (req, res) => {
+  const message = await Message.findOne({ id: req.params.id });
+  if (!message) throw new ApiError(404, 'Message not found');
+  await message.deleteOne();
+  return res.json([message]);
+});
+
 module.exports = {
   listChats,
+  getChat,
   upsertChat,
+  deleteChat,
   listMessages,
   sendMessage,
+  deleteMessage,
 };
