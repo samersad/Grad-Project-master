@@ -1,11 +1,12 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
 const env = require('../config/env');
 const User = require('../models/user.model');
 const { buildSession } = require('../utils/session');
 const { signPasswordResetToken } = require('../utils/tokens');
-const { sanitizePayload, fields } = require('../utils/supabaseShape');
+const { sendPasswordResetOTP } = require('../services/email.service');
 const jwt = require('jsonwebtoken');
 
 const register = asyncHandler(async (req, res) => {
@@ -45,21 +46,91 @@ const logout = asyncHandler(async (_req, res) => {
   return res.json({ signedOut: true });
 });
 
+/**
+ * Generate a 6-digit OTP, save it on the user, and email it.
+ * In development mode the OTP is also returned in the response for testing.
+ */
 const resetPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
   if (!email) throw new ApiError(422, 'email is required');
 
-  const user = await User.findOne({ email: String(email).toLowerCase() });
+  const user = await User.findOne({ email: String(email).toLowerCase() }).select('+resetOtp +resetOtpExpiry');
+
   const response = {
-    message: 'If this email exists, a password reset token has been generated.',
+    message: 'If this email exists, a password reset code has been sent.',
   };
 
-  if (user && !env.isProduction) {
-    response.resetToken = signPasswordResetToken(user);
-    response.note = 'Development only: use resetToken with POST /auth/password-reset/confirm.';
+  if (user) {
+    // Generate a 6-digit OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    user.resetOtp = otp;
+    user.resetOtpExpiry = otpExpiry;
+    await user.save();
+
+    // Send OTP via email
+    try {
+      await sendPasswordResetOTP(user.email, otp);
+      response.emailSent = true;
+    } catch (emailError) {
+      console.error('Failed to send password reset email:', emailError.message);
+      // In development, still return the OTP so testing can proceed
+      if (!env.isProduction) {
+        response.emailSent = false;
+        response.emailError = emailError.message;
+      }
+    }
+
+    // In development mode, also expose OTP and resetToken for testing
+    if (!env.isProduction) {
+      response.otp = otp;
+      response.resetToken = signPasswordResetToken(user);
+      response.note = 'Development only: OTP and resetToken exposed for testing.';
+    }
   }
 
   return res.json(response);
+});
+
+/**
+ * Verify the 6-digit OTP and return a reset token if valid.
+ */
+const verifyResetOTP = asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) throw new ApiError(422, 'email and otp are required');
+
+  const user = await User.findOne({ email: String(email).toLowerCase() }).select('+resetOtp +resetOtpExpiry');
+  if (!user) throw new ApiError(401, 'Invalid email or OTP');
+
+  if (!user.resetOtp || !user.resetOtpExpiry) {
+    throw new ApiError(401, 'No password reset was requested. Please request a new code.');
+  }
+
+  if (new Date() > user.resetOtpExpiry) {
+    // Clear expired OTP
+    user.resetOtp = null;
+    user.resetOtpExpiry = null;
+    await user.save();
+    throw new ApiError(401, 'OTP has expired. Please request a new code.');
+  }
+
+  if (user.resetOtp !== String(otp).trim()) {
+    throw new ApiError(401, 'Invalid OTP code.');
+  }
+
+  // OTP is valid – clear it so it can't be reused
+  user.resetOtp = null;
+  user.resetOtpExpiry = null;
+  await user.save();
+
+  // Return a password reset token (JWT) the client will use to set the new password
+  const resetToken = signPasswordResetToken(user);
+
+  return res.json({
+    message: 'OTP verified successfully.',
+    resetToken,
+  });
 });
 
 const confirmPasswordReset = asyncHandler(async (req, res) => {
@@ -149,12 +220,16 @@ const deleteAccount = asyncHandler(async (req, res) => {
   return res.json({ message: 'Account and all associated data deleted successfully' });
 });
 
+// Keep the import for sanitizePayload
+const { sanitizePayload, fields } = require('../utils/supabaseShape');
+
 module.exports = {
   register,
   login,
   me,
   logout,
   resetPassword,
+  verifyResetOTP,
   confirmPasswordReset,
   updatePassword,
   exchangeSession,

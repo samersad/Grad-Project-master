@@ -14,6 +14,8 @@ const userSchema = new mongoose.Schema(
     photoUrl: { type: String, default: null },
     fcmToken: { type: String, default: null },
     passwordHash: { type: String, required: true, select: false },
+    resetOtp: { type: String, default: null, select: false },
+    resetOtpExpiry: { type: Date, default: null, select: false },
   },
   {
     timestamps: { createdAt: 'createdAt', updatedAt: false },

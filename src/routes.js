@@ -22,6 +22,7 @@ router.post('/auth/exchange', authenticate, auth.exchangeSession);
 router.post('/auth/logout', authenticate, auth.logout);
 router.get('/auth/me', authenticate, auth.me);
 router.post('/auth/password-reset', auth.resetPassword);
+router.post('/auth/password-reset/verify-otp', auth.verifyResetOTP);
 router.post('/auth/password-reset/confirm', auth.confirmPasswordReset);
 router.patch('/auth/password', authenticate, auth.updatePassword);
 router.delete('/auth/account', authenticate, auth.deleteAccount);
@@ -75,4 +76,3 @@ router.post('/functions/send-chat-notification', authenticate, functions.sendCha
 router.post('/functions/send-booking-status-notification', authenticate, functions.sendBookingStatusNotification);
 
 module.exports = router;
-
