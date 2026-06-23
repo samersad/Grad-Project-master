@@ -25,6 +25,9 @@ const env = {
     verifyExpiresIn: process.env.JWT_VERIFY_EXPIRES_IN || '24h',
     resetExpiresIn: process.env.JWT_RESET_EXPIRES_IN || '15m',
   },
+  supabase: {
+    jwtSecret: process.env.SUPABASE_JWT_SECRET || null,
+  },
   cookieSecure: String(process.env.COOKIE_SECURE || 'false') === 'true',
   bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS || 12),
   smtp: {

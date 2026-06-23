@@ -10,23 +10,105 @@ function getToken(req) {
   return req.cookies?.accessToken || null;
 }
 
+function normalizeClaimString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function extractExternalUserProfile(decoded) {
+  const email = normalizeClaimString(decoded.email);
+  const fullName =
+    normalizeClaimString(decoded?.user_metadata?.full_name) ||
+    normalizeClaimString(decoded?.user_metadata?.name) ||
+    normalizeClaimString(decoded?.name) ||
+    email?.split('@')[0] ||
+    'External User';
+
+  const role =
+    normalizeClaimString(decoded?.user_metadata?.role) ||
+    normalizeClaimString(decoded?.app_metadata?.role) ||
+    normalizeClaimString(decoded?.role) ||
+    'client';
+
+  return {
+    id: String(decoded.sub || decoded.user_id || decoded.id || '').trim(),
+    email,
+    name: fullName,
+    role,
+    photoUrl:
+      normalizeClaimString(decoded?.user_metadata?.avatar_url) ||
+      normalizeClaimString(decoded?.user_metadata?.picture) ||
+      normalizeClaimString(decoded?.picture) ||
+      null,
+    phoneNumber: normalizeClaimString(decoded.phone) || null,
+  };
+}
+
+async function resolveExternalUser(decoded) {
+  const profile = extractExternalUserProfile(decoded);
+  if (!profile.id) throw new ApiError(401, 'Invalid or expired authentication token');
+
+  const emailFilter = profile.email ? { email: profile.email.toLowerCase() } : null;
+  const existingUser = emailFilter
+    ? await User.findOne(emailFilter)
+    : await User.findOne({ id: profile.id });
+
+  if (existingUser) {
+    if (!existingUser.id) existingUser.id = profile.id;
+    if (profile.name) existingUser.name = profile.name;
+    if (profile.photoUrl) existingUser.photoUrl = profile.photoUrl;
+    if (profile.phoneNumber) existingUser.phoneNumber = profile.phoneNumber;
+    if (profile.role && !existingUser.role) existingUser.role = profile.role;
+    if (!existingUser.passwordHash) existingUser.passwordHash = 'external-auth-placeholder';
+    await existingUser.save();
+    return existingUser;
+  }
+
+  return User.create({
+    id: profile.id,
+    name: profile.name,
+    email: profile.email || `${profile.id}@external.local`,
+    role: profile.role,
+    photoUrl: profile.photoUrl,
+    phoneNumber: profile.phoneNumber,
+    passwordHash: 'external-auth-placeholder',
+  });
+}
+
+function verifyBackendToken(token) {
+  const decoded = jwt.verify(token, env.jwt.accessSecret);
+  return User.findOne({ id: decoded.sub });
+}
+
+async function verifySupabaseToken(token) {
+  if (!env.supabase.jwtSecret) return null;
+  const decoded = jwt.verify(token, env.supabase.jwtSecret);
+  return resolveExternalUser(decoded);
+}
+
 const authenticate = asyncHandler(async (req, _res, next) => {
   const token = getToken(req);
   if (!token) throw new ApiError(401, 'Authentication token is required');
 
   let decoded;
   try {
-    decoded = jwt.verify(token, env.jwt.accessSecret);
+    const user = await verifyBackendToken(token);
+    if (!user) throw new ApiError(401, 'User no longer exists');
+    req.user = user;
+    req.token = token;
+    return next();
   } catch (_error) {
-    throw new ApiError(401, 'Invalid or expired authentication token');
+    try {
+      const externalUser = await verifySupabaseToken(token);
+      if (!externalUser) throw new ApiError(401, 'Invalid or expired authentication token');
+      req.user = externalUser;
+      req.token = token;
+      return next();
+    } catch (_externalError) {
+      throw new ApiError(401, 'Invalid or expired authentication token');
+    }
   }
-
-  const user = await User.findOne({ id: decoded.sub });
-  if (!user) throw new ApiError(401, 'User no longer exists');
-
-  req.user = user;
-  req.token = token;
-  return next();
 });
 
 const optionalAuthenticate = asyncHandler(async (req, _res, next) => {
@@ -34,8 +116,17 @@ const optionalAuthenticate = asyncHandler(async (req, _res, next) => {
   if (!token) return next();
 
   try {
-    const decoded = jwt.verify(token, env.jwt.accessSecret);
-    req.user = await User.findOne({ id: decoded.sub });
+    const backendUser = await verifyBackendToken(token);
+    if (backendUser) {
+      req.user = backendUser;
+      return next();
+    }
+  } catch (_error) {
+    // fall through to external auth
+  }
+
+  try {
+    req.user = await verifySupabaseToken(token);
   } catch (_error) {
     req.user = null;
   }
