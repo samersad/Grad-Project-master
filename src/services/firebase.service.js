@@ -11,26 +11,27 @@ function getServiceAccount() {
     let jsonStr = env.firebase.serviceAccountJson;
 
     if (jsonStr) {
-      // Clean up the string in case it's wrapped in extra quotes from Render UI
       jsonStr = jsonStr.trim();
-      if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
-        jsonStr = jsonStr.substring(1, jsonStr.length - 1);
-      }
-
-      // If it looks like an escaped string (contains \n as text), unescape it
-      if (jsonStr.includes('\\n')) {
-        // This handles cases where the whole JSON is an escaped string
-        try {
-          // If it's valid JSON that was stringified into a string variable
-          sa = JSON.parse(jsonStr);
-        } catch (e) {
-          // If it's not valid JSON yet, it might be a double-escaped string
-          // We manually unescape the common characters
-          jsonStr = jsonStr.replace(/\\n/g, '\n').replace(/\\"/g, '"');
-          sa = JSON.parse(jsonStr);
+      let parsed = jsonStr;
+      for (let i = 0; i < 2; i++) {
+        if (typeof parsed === 'string') {
+          try {
+            parsed = JSON.parse(parsed);
+          } catch (e) {
+            if (i === 0 && !parsed.startsWith('"')) {
+              try {
+                parsed = JSON.parse(`"${parsed}"`);
+              } catch (err) {
+                break;
+              }
+            } else {
+              break;
+            }
+          }
         }
-      } else {
-        sa = JSON.parse(jsonStr);
+      }
+      if (parsed && typeof parsed === 'object') {
+        sa = parsed;
       }
     } else if (env.firebase.serviceAccountPath) {
       sa = JSON.parse(fs.readFileSync(env.firebase.serviceAccountPath, 'utf8'));
