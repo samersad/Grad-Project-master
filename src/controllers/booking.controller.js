@@ -3,6 +3,8 @@ const asyncHandler = require('../utils/asyncHandler');
 const Booking = require('../models/booking.model');
 const Apartment = require('../models/apartment.model');
 const Notification = require('../models/notification.model');
+const User = require('../models/user.model');
+const { sendPushToToken } = require('../services/firebase.service');
 const { sanitizePayload, fields, applyFilters, parseSort } = require('../utils/supabaseShape');
 
 const acceptedStatuses = new Set(['accepted', 'confirmed']);
@@ -150,15 +152,40 @@ const createBooking = asyncHandler(async (req, res) => {
   if (!payload.createdAt) payload.createdAt = new Date();
 
   const booking = await Booking.create(payload);
+  const notificationBody = buildBookingRequestBody(booking);
+  
   await createNotification({
     title: 'Booking request received',
-    body: buildBookingRequestBody(booking),
+    body: notificationBody,
     createdAt: new Date(),
     type: 'new_booking',
     isRead: false,
     receiverId: booking.ownerId,
     bookingId: booking.id,
   });
+
+  // Send FCM push notification to owner
+  if (booking.ownerId) {
+    try {
+      const owner = await User.findOne({ id: booking.ownerId });
+      if (owner?.fcmToken) {
+        await sendPushToToken({
+          token: owner.fcmToken,
+          title: 'Booking request received',
+          body: notificationBody,
+          data: {
+            type: 'new_booking',
+            bookingId: booking.id,
+            receiverId: booking.ownerId,
+            senderId: booking.clientId || '',
+          },
+        });
+      }
+    } catch (error) {
+      console.error('FCM push notification for new booking failed:', error.message);
+    }
+  }
+
   return res.status(201).json(serializeBooking(booking));
 });
 
@@ -187,6 +214,26 @@ const updateStatus = asyncHandler(async (req, res) => {
       receiverId: booking.clientId,
       bookingId: booking.id,
     });
+
+    // Send FCM push notification to client
+    try {
+      const client = await User.findOne({ id: booking.clientId });
+      if (client?.fcmToken) {
+        await sendPushToToken({
+          token: client.fcmToken,
+          title: notification.title,
+          body: notification.body,
+          data: {
+            type: notification.type,
+            bookingId: booking.id,
+            receiverId: booking.clientId,
+            senderId: req.user.id || '',
+          },
+        });
+      }
+    } catch (error) {
+      console.error('FCM push notification for booking status update failed:', error.message);
+    }
   }
 
   return res.json(serializeBooking(booking));
