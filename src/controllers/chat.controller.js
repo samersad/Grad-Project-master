@@ -106,6 +106,7 @@ const sendMessage = asyncHandler(async (req, res) => {
 
   const message = await Message.create(messagePayload);
   const notificationData = req.body.notificationData;
+  let push = { sent: false, reason: 'not_requested' };
   if (notificationData?.receiverId) {
     const title = `New message from ${notificationData.senderName || req.user.name}`;
     const body = buildChatPreview(notificationData.message || message.message);
@@ -123,7 +124,7 @@ const sendMessage = asyncHandler(async (req, res) => {
     const receiver = await User.findOne({ id: notificationData.receiverId });
     if (receiver?.fcmToken) {
       try {
-        await sendPushToToken({
+        push = await sendPushToToken({
           token: receiver.fcmToken,
           title,
           body,
@@ -137,12 +138,18 @@ const sendMessage = asyncHandler(async (req, res) => {
           },
         });
       } catch (error) {
+        push = {
+          sent: false,
+          reason: error?.message || 'push_failed',
+        };
         console.error('Chat push notification failed:', error.message);
       }
+    } else {
+      push = { sent: false, reason: 'receiver_has_no_token' };
     }
   }
 
-  return res.status(201).json(message);
+  return res.status(201).json({ message, push });
 });
 
 const deleteMessage = asyncHandler(async (req, res) => {
