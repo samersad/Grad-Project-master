@@ -122,19 +122,23 @@ const sendMessage = asyncHandler(async (req, res) => {
 
     const receiver = await User.findOne({ id: notificationData.receiverId });
     if (receiver?.fcmToken) {
-      await sendPushToToken({
-        token: receiver.fcmToken,
-        title,
-        body,
-        imageUrl: req.user.photoUrl,
-        data: {
-          type: 'new_message',
-          receiverId: notificationData.receiverId,
-          senderId: notificationData.senderId || req.user.id,
-          chatId,
+      try {
+        await sendPushToToken({
+          token: receiver.fcmToken,
+          title,
+          body,
           imageUrl: req.user.photoUrl,
-        },
-      });
+          data: {
+            type: 'new_message',
+            receiverId: notificationData.receiverId,
+            senderId: notificationData.senderId || req.user.id,
+            chatId,
+            imageUrl: req.user.photoUrl,
+          },
+        });
+      } catch (error) {
+        console.error('Chat push notification failed:', error.message);
+      }
     }
   }
 

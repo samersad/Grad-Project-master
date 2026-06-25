@@ -47,13 +47,18 @@ const sendBookingNotification = asyncHandler(async (req, res) => {
     bookingId: req.body.bookingId,
     isRead: false,
   });
-  const push = await sendNotificationPush({
-    receiverId,
-    title,
-    body,
-    type,
-    bookingId: req.body.bookingId,
-  });
+  let push = { sent: false, reason: 'skipped' };
+  try {
+    push = await sendNotificationPush({
+      receiverId,
+      title,
+      body,
+      type,
+      bookingId: req.body.bookingId,
+    });
+  } catch (error) {
+    console.error('Booking push notification failed:', error.message);
+  }
   return res.json({ sent: push.sent, push, notification });
 });
 
@@ -70,14 +75,19 @@ const sendChatNotification = asyncHandler(async (req, res) => {
     chatId: req.body.chatId,
     isRead: false,
   });
-  const push = await sendNotificationPush({
-    receiverId: req.body.receiverId,
-    title,
-    body,
-    type,
-    senderId: req.body.senderId,
-    chatId: req.body.chatId,
-  });
+  let push = { sent: false, reason: 'skipped' };
+  try {
+    push = await sendNotificationPush({
+      receiverId: req.body.receiverId,
+      title,
+      body,
+      type,
+      senderId: req.body.senderId,
+      chatId: req.body.chatId,
+    });
+  } catch (error) {
+    console.error('Chat push notification failed:', error.message);
+  }
   return res.json({ sent: push.sent, push, notification });
 });
 
@@ -93,13 +103,18 @@ const sendBookingStatusNotification = asyncHandler(async (req, res) => {
     bookingId: req.body.bookingId,
     isRead: false,
   });
-  const push = await sendNotificationPush({
-    receiverId: req.body.receiverId,
-    title,
-    body,
-    type,
-    bookingId: req.body.bookingId,
-  });
+  let push = { sent: false, reason: 'skipped' };
+  try {
+    push = await sendNotificationPush({
+      receiverId: req.body.receiverId,
+      title,
+      body,
+      type,
+      bookingId: req.body.bookingId,
+    });
+  } catch (error) {
+    console.error('Booking status push notification failed:', error.message);
+  }
   return res.json({ sent: push.sent, push, notification });
 });
 
