@@ -6,15 +6,25 @@ let cachedAccessToken = null;
 let cachedAccessTokenExpiresAt = 0;
 
 function getServiceAccount() {
-  if (env.firebase.serviceAccountJson) {
-    return JSON.parse(env.firebase.serviceAccountJson);
-  }
+  try {
+    let sa = null;
 
-  if (env.firebase.serviceAccountPath) {
-    return JSON.parse(fs.readFileSync(env.firebase.serviceAccountPath, 'utf8'));
-  }
+    if (env.firebase.serviceAccountJson) {
+      sa = JSON.parse(env.firebase.serviceAccountJson);
+    } else if (env.firebase.serviceAccountPath) {
+      sa = JSON.parse(fs.readFileSync(env.firebase.serviceAccountPath, 'utf8'));
+    }
 
-  return null;
+    if (sa && sa.private_key) {
+      // Fix for environment variables escaping newlines as \n string
+      sa.private_key = sa.private_key.replace(/\\n/g, '\n');
+    }
+
+    return sa;
+  } catch (error) {
+    console.error('Failed to parse Firebase Service Account:', error);
+    return null;
+  }
 }
 
 async function getGoogleAccessToken() {
