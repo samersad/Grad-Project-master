@@ -8,21 +8,47 @@ let cachedAccessTokenExpiresAt = 0;
 function getServiceAccount() {
   try {
     let sa = null;
+    let jsonStr = env.firebase.serviceAccountJson;
 
-    if (env.firebase.serviceAccountJson) {
-      sa = JSON.parse(env.firebase.serviceAccountJson);
+    if (jsonStr) {
+      // Clean up the string in case it's wrapped in extra quotes from Render UI
+      jsonStr = jsonStr.trim();
+      if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
+        jsonStr = jsonStr.substring(1, jsonStr.length - 1);
+      }
+
+      // If it looks like an escaped string (contains \n as text), unescape it
+      if (jsonStr.includes('\\n')) {
+        // This handles cases where the whole JSON is an escaped string
+        try {
+          // If it's valid JSON that was stringified into a string variable
+          sa = JSON.parse(jsonStr);
+        } catch (e) {
+          // If it's not valid JSON yet, it might be a double-escaped string
+          // We manually unescape the common characters
+          jsonStr = jsonStr.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+          sa = JSON.parse(jsonStr);
+        }
+      } else {
+        sa = JSON.parse(jsonStr);
+      }
     } else if (env.firebase.serviceAccountPath) {
       sa = JSON.parse(fs.readFileSync(env.firebase.serviceAccountPath, 'utf8'));
     }
 
-    if (sa && sa.private_key) {
-      // Fix for environment variables escaping newlines as \n string
+    if (sa && sa.private_key && typeof sa.private_key === 'string') {
+      // Final safety check for the private key format
       sa.private_key = sa.private_key.replace(/\\n/g, '\n');
+
+      // Ensure the key starts and ends correctly
+      if (!sa.private_key.includes('-----BEGIN PRIVATE KEY-----')) {
+        console.error('Firebase private key is missing header');
+      }
     }
 
     return sa;
   } catch (error) {
-    console.error('Failed to parse Firebase Service Account:', error);
+    console.error('Failed to parse Firebase Service Account:', error.message);
     return null;
   }
 }
