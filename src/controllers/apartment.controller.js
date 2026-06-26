@@ -42,6 +42,8 @@ const getApartment = asyncHandler(async (req, res) => {
 
 const createApartment = asyncHandler(async (req, res) => {
   const payload = sanitizePayload(req.body, fields.apartment);
+  delete payload.id; // Ensure server-side ID generation
+
   if (!payload.ownerId) payload.ownerId = req.user.id;
   if (!payload.ownerName) payload.ownerName = req.user.name;
   if (!payload.ownerPhotoUrl) payload.ownerPhotoUrl = req.user.photoUrl;

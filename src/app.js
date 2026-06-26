@@ -11,8 +11,8 @@ const app = express();
 
 app.use(pinoHttp({ logger }));
 applyPreBodySecurity(app);
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 applyPostBodySecurity(app);
 app.use('/uploads', express.static(path.resolve(process.cwd(), env.storage.uploadDir)));
 

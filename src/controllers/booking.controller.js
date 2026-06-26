@@ -146,6 +146,8 @@ const getBooking = asyncHandler(async (req, res) => {
 
 const createBooking = asyncHandler(async (req, res) => {
   const payload = sanitizePayload(req.body, fields.booking);
+  delete payload.id; // Ensure server-side ID generation
+
   if (!payload.clientId) payload.clientId = req.user.id;
   if (!payload.clientName) payload.clientName = req.user.name;
   if (!payload.status) payload.status = 'pending';

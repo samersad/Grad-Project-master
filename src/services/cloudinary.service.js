@@ -26,11 +26,17 @@ function uploadBuffer(file, folder) {
   }
 
   return new Promise((resolve, reject) => {
-    const resourceType = file.mimetype?.startsWith('video/') ? 'video' : 'image';
+    const isVideo = file.mimetype?.startsWith('video/');
+    const resourceType = isVideo ? 'video' : 'image';
+
+    // Optimization for large files and videos
     const options = {
       folder,
       resource_type: resourceType,
+      chunk_size: isVideo ? 6000000 : undefined, // 6MB chunks for videos
+      timeout: 120000, // 2 minute timeout for huge files
     };
+
     const done = (error, result) => {
       if (error) {
         console.error('Cloudinary Upload Rejection:', error);
@@ -39,6 +45,7 @@ function uploadBuffer(file, folder) {
       return resolve(result);
     };
 
+    // Use upload_stream for all types, but options help for videos
     const stream = hasSignedCredentials()
       ? cloudinary.uploader.upload_stream(options, done)
       : cloudinary.uploader.unsigned_upload_stream(env.cloudinary.uploadPreset, options, done);

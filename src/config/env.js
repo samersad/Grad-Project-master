@@ -44,7 +44,7 @@ const env = {
   storage: {
     driver: process.env.STORAGE_DRIVER || 'local',
     uploadDir: process.env.UPLOAD_DIR || 'uploads',
-    maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB || 5),
+    maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB || 100),
   },
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
