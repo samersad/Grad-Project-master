@@ -140,9 +140,11 @@ async function searchApartments({
 
   try {
     let apartments = await Apartment.find(filter).lean();
+    let isFallback = false;
 
     // If no exact matches exist, get closest available apartments as fallback
     if (apartments.length === 0) {
+      isFallback = true;
       const fallbackFilter = { price: { $gte: 100 } };
       
       // If location was requested, try fallback to just location
@@ -156,7 +158,13 @@ async function searchApartments({
           ];
         }
       }
-      apartments = await Apartment.find(fallbackFilter).limit(10).lean();
+
+      // If priceMax was the issue, sort by price ascending in fallback
+      if (priceMax && !location) {
+        apartments = await Apartment.find(fallbackFilter).sort({ price: 1 }).limit(10).lean();
+      } else {
+        apartments = await Apartment.find(fallbackFilter).limit(10).lean();
+      }
     }
 
     // Smart semantic-style ranking & scoring
@@ -191,15 +199,21 @@ async function searchApartments({
       if (priceMax) {
         const diff = Number(priceMax) - (apt.price || 0);
         if (diff >= 0) {
-          // Cheaper than max price gets bonus
-          score += 50;
+          // Within budget: higher score, plus bonus for being close to max (optional)
+          score += 100;
           score += (1 - (diff / Number(priceMax))) * 30;
+        } else {
+          // Over budget: penalty based on how much over
+          const over = (apt.price || 0) - Number(priceMax);
+          score -= Math.min(100, (over / Number(priceMax)) * 50);
         }
       }
 
       if (priceMin) {
         if (apt.price >= Number(priceMin)) {
           score += 50;
+        } else {
+          score -= 50;
         }
       }
 
@@ -223,10 +237,13 @@ async function searchApartments({
     // Limit to top 10 results
     const results = scoredApartments.slice(0, 10).map(x => x.apt);
 
-    return results.map(formatApartmentForResponse);
+    return {
+      apartments: results.map(formatApartmentForResponse),
+      isFallback
+    };
   } catch (error) {
     console.error('Database apartment search failed:', error.message);
-    return [];
+    return { apartments: [], isFallback: false };
   }
 }
 

@@ -217,7 +217,7 @@ function extractPriceMax(message) {
   }
 
   const maxMatch = lower.match(
-    /(?:under|below|max|maximum|budget|up\s*to|حد اقصى|بحد اقصى|ميزانية|الى|لحد|اقل من|أقل من)?\s*(?:egp|EGP|جنيه|ج\.?م)?\s*(\d{3,7})(?:\s*(?:egp|EGP|جنيه|ج\.?م|per month|\/month|monthly|شهري|في الشهر))?/i,
+    /(?:under|below|less than|less|max|maximum|budget|up\s*to|حد اقصى|بحد اقصى|ميزانية|الى|لحد|اقل من|أقل من)?\s*(?:egp|EGP|جنيه|ج\.?م)?\s*(\d{3,7})(?:\s*(?:egp|EGP|جنيه|ج\.?م|per month|\/month|monthly|شهري|في الشهر))?/i,
   );
   return maxMatch ? Number(maxMatch[1]) : null;
 }

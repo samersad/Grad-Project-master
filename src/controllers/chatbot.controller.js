@@ -45,10 +45,10 @@ async function handleChat(req, res, next) {
 
     // search_apartment: Search with location, price, rooms, etc.
     if (intent === 'search_apartment') {
-      const apartments = await searchApartments(entities);
-      suggestions = apartments;
-      data = apartments;
-      answerContext = buildApartmentContext(apartments, entities, language);
+      const result = await searchApartments(entities);
+      suggestions = result.apartments;
+      data = result.apartments;
+      answerContext = buildApartmentContext(result.apartments, entities, language, result.isFallback);
     }
 
     // booking_info: Information about how to book or platform stats
@@ -131,11 +131,18 @@ async function handleChat(req, res, next) {
 /**
  * Build a text context from apartment listings for the AI to reason with.
  */
-function buildApartmentContext(apartments, entities, language) {
+function buildApartmentContext(apartments, entities, language, isFallback = false) {
   if (!apartments || apartments.length === 0) {
     return language === 'ar'
       ? 'لم يتم العثور على شقق مطابقة حالياً. اقترح على المستخدم تغيير المكان أو عدد الغرف أو الميزانية.'
       : 'No matching apartments were found in the database. Suggest the user to change location, room count, or budget.';
+  }
+
+  let statusMessage = '';
+  if (isFallback) {
+    statusMessage = language === 'ar'
+      ? 'تحذير: لم يتم العثور على شقق مطابقة تماماً للميزانية أو الطلب. النتائج المعروضة هي أقرب بدائل متاحة حالياً.'
+      : 'Warning: No exact matches found for the requested price or criteria. The results below are the closest available alternatives.';
   }
 
   const criteria = [
@@ -167,7 +174,7 @@ function buildApartmentContext(apartments, entities, language) {
     })
     .join('\n');
 
-  return `Criteria: ${criteria || 'none'}\nResults from Database:\n${listings}`;
+  return `${statusMessage}\nCriteria: ${criteria || 'none'}\nResults from Database:\n${listings}`;
 }
 
 /**
