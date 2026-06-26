@@ -8,6 +8,10 @@ const { searchApartments } = require('../services/aiApartmentService');
 const { getFaqAnswer } = require('../services/aiFaqService');
 const db = require('../services/aiDatabaseService');
 
+/**
+ * Handle incoming chat messages.
+ * Understands intent, searches database, and generates natural language response.
+ */
 async function handleChat(req, res, next) {
   try {
     const { message } = req.body;
@@ -28,21 +32,27 @@ async function handleChat(req, res, next) {
 
     const cleanMessage = message.trim();
     const language = isArabicMessage(cleanMessage) ? 'ar' : 'en';
+
+    // 1. Detect Intent and Entities (Thinking phase)
     const analysis = await detectIntentAndEntities(cleanMessage);
     const { intent, entities } = analysis;
 
     let data = null;
+    let suggestions = [];
     let answerContext = '';
 
-    // search_apartment
+    // 2. Fetch Real Data from Database based on Intent
+
+    // search_apartment: Search with location, price, rooms, etc.
     if (intent === 'search_apartment') {
       const apartments = await searchApartments(entities);
+      suggestions = apartments;
       data = apartments;
       answerContext = buildApartmentContext(apartments, entities, language);
     }
 
-    // booking_info
-    if (intent === 'booking_info') {
+    // booking_info: Information about how to book or platform stats
+    else if (intent === 'booking_info') {
       const stats = await db.getPlatformStats();
       data = {
         totalBookings: stats?.totalBookings || 0,
@@ -51,15 +61,15 @@ async function handleChat(req, res, next) {
       answerContext = buildBookingContext(stats, language);
     }
 
-    // platform_info
-    if (intent === 'platform_info') {
+    // platform_info: FAQ or Platform stats
+    else if (intent === 'platform_info') {
       const faqResult = await getFaqAnswer(cleanMessage, intent);
       data = faqResult.stats || null;
       answerContext = faqResult.answer;
     }
 
-    // contact_support
-    if (intent === 'contact_support') {
+    // contact_support: Human support contact details
+    else if (intent === 'contact_support') {
       data = {
         supportEmail: 'support@sokon3m.com',
         supportPhone: '01011105307',
@@ -74,8 +84,8 @@ async function handleChat(req, res, next) {
           : 'The user wants to contact support. Share the support details: support@sokon3m.com or 01011105307';
     }
 
-    // general
-    if (intent === 'general') {
+    // general: Greeting or fallback platform info
+    else {
       const stats = await db.getPlatformStats();
       if (stats) {
         data = {
@@ -94,7 +104,7 @@ async function handleChat(req, res, next) {
       }
     }
 
-    // Generate response using OpenAI
+    // 3. Generate Natural Language Response using AI (Grounded in DB data)
     const reply = await generateChatResponse({
       userMessage: cleanMessage,
       intent,
@@ -103,30 +113,39 @@ async function handleChat(req, res, next) {
       language: intent === 'contact_support' ? 'ar' : language,
     });
 
+    // 4. Return Structured Result (Reply + Suggestions)
     return res.json({
       success: true,
+      reply,
+      suggestions,
+      data: suggestions.length > 0 ? suggestions : data,
       intent,
       entities,
-      language,
-      reply,
-      data,
+      language
     });
   } catch (error) {
     next(error);
   }
 }
 
+/**
+ * Build a text context from apartment listings for the AI to reason with.
+ */
 function buildApartmentContext(apartments, entities, language) {
   if (!apartments || apartments.length === 0) {
     return language === 'ar'
-      ? 'لم يتم العثور على شقق مطابقة. اقترح تغيير المكان أو عدد الغرف أو الميزانية.'
-      : 'No matching apartments were found. Suggest changing the location, room count, or budget.';
+      ? 'لم يتم العثور على شقق مطابقة حالياً. اقترح على المستخدم تغيير المكان أو عدد الغرف أو الميزانية.'
+      : 'No matching apartments were found in the database. Suggest the user to change location, room count, or budget.';
   }
 
   const criteria = [
     entities.location ? `location: ${entities.location}` : null,
     entities.rooms ? `bedrooms: ${entities.rooms}` : null,
-    entities.price ? `maximum price: ${entities.price} EGP` : null,
+    entities.priceMin ? `minimum price: ${entities.priceMin} EGP` : null,
+    entities.priceMax ? `maximum price: ${entities.priceMax} EGP` : null,
+    entities.peopleCount ? `capacity for: ${entities.peopleCount} people` : null,
+    entities.ratingPref ? `prefer high rating` : null,
+    entities.verifiedPref ? `prefer verified` : null,
     entities.query ? `features: ${entities.query}` : null,
   ]
     .filter(Boolean)
@@ -138,46 +157,40 @@ function buildApartmentContext(apartments, entities, language) {
         apt.name,
         apt.city ? `City: ${apt.city}` : null,
         apt.district ? `District: ${apt.district}` : null,
-        apt.address ? `Address: ${apt.address}` : null,
-        apt.bedrooms != null ? `${apt.bedrooms} bedroom(s)` : null,
-        apt.bathrooms != null ? `${apt.bathrooms} bathroom(s)` : null,
-        apt.price != null ? `${apt.price} EGP/month` : null,
-        apt.availablePeople != null ? `${apt.availablePeople} spot(s) available` : null,
-        apt.rating > 0 ? `Rating: ${apt.rating.toFixed(1)}/5 (${apt.ratingCount} reviews)` : null,
-        apt.verified ? 'Verified' : 'Not yet verified',
-        apt.ownerName ? `Owner: ${apt.ownerName}` : null,
+        apt.bedrooms != null ? `${apt.bedrooms} BR` : null,
+        apt.price != null ? `${apt.price} EGP` : null,
+        apt.available_people != null ? `${apt.available_people} available` : null,
+        apt.rating_average > 0 ? `Rating: ${apt.rating_average.toFixed(1)}` : null,
+        apt.verified ? 'Verified' : 'Not Verified',
       ];
       return parts.filter(Boolean).join(' | ');
     })
     .join('\n');
 
-  return `Search criteria: ${criteria || 'none provided'}\nFound ${apartments.length} apartment(s) from the database:\n${listings}`;
+  return `Criteria: ${criteria || 'none'}\nResults from Database:\n${listings}`;
 }
 
+/**
+ * Build a text context from platform stats.
+ */
 function buildBookingContext(stats, language) {
-  if (!stats) {
-    return language === 'ar'
-      ? 'معلومات الحجز غير متاحة حالياً.'
-      : 'Booking information is temporarily unavailable.';
-  }
+  if (!stats) return '';
 
   if (language === 'ar') {
     return [
-      `المنصة فيها ${stats.totalBookings} حجز إجمالي`,
-      `${stats.activeBookings} حجز نشط حالياً`,
-      `${stats.availableApartments} شقة متاحة للحجز`,
-      'عملية الحجز: اختار الشقة → قدم طلب حجز → المالك يوافق أو يرفض → تأكيد الحجز',
-      'لو عايز تلغي حجز تواصل مع خدمة العملاء',
-    ].join('. ') + '.';
+      `إجمالي الحجوزات: ${stats.totalBookings}`,
+      `حجوزات نشطة: ${stats.activeBookings}`,
+      `شقق متاحة حالياً: ${stats.availableApartments}`,
+      'خطوات الحجز: تصفح الشقق → اطلب الحجز → انتظار موافقة المالك → تأكيد الدفع',
+    ].join('\n');
   }
 
   return [
-    `The platform has ${stats.totalBookings} total bookings`,
-    `${stats.activeBookings} are currently active`,
-    `${stats.availableApartments} apartments are available for booking`,
-    'Booking process: Choose an apartment → Submit a booking request → Owner approves or rejects → Booking confirmed',
-    'To cancel a booking, contact customer support',
-  ].join('. ') + '.';
+    `Total bookings: ${stats.totalBookings}`,
+    `Active bookings: ${stats.activeBookings}`,
+    `Available apartments: ${stats.availableApartments}`,
+    'Booking steps: Browse apartments → Request booking → Wait for owner approval → Confirm payment',
+  ].join('\n');
 }
 
 module.exports = {

@@ -77,5 +77,6 @@ router.post('/functions/send-chat-notification', authenticate, functions.sendCha
 router.post('/functions/send-booking-status-notification', authenticate, functions.sendBookingStatusNotification);
 
 router.post('/chatbot', optionalAuthenticate, chatbot.handleChat);
+router.post('/ai/chat', optionalAuthenticate, chatbot.handleChat);
 
 module.exports = router;

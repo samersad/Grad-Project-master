@@ -8,7 +8,11 @@ async function searchApartments(entities) {
   return db.searchApartments({
     location: entities.location || null,
     rooms: entities.rooms || null,
-    price: entities.price || null,
+    priceMin: entities.priceMin || null,
+    priceMax: entities.priceMax || null,
+    peopleCount: entities.peopleCount || null,
+    ratingPref: entities.ratingPref || false,
+    verifiedPref: entities.verifiedPref || false,
     query: entities.query || null,
   });
 }
