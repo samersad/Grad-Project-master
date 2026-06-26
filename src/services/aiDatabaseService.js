@@ -140,9 +140,14 @@ async function searchApartments({
 
   try {
     let apartments = await Apartment.find(filter).lean();
-    let isFallback = false;
 
-    // If no exact matches exist, get closest available apartments as fallback
+    // STRICT MODE: If price was specified and no matches found, do NOT fallback
+    if (apartments.length === 0 && (priceMin || priceMax)) {
+      return { apartments: [], isFallback: false };
+    }
+
+    // If no exact matches exist for NON-price queries, get closest available apartments as fallback
+    let isFallback = false;
     if (apartments.length === 0) {
       isFallback = true;
       const fallbackFilter = { price: { $gte: 100 } };
@@ -158,13 +163,7 @@ async function searchApartments({
           ];
         }
       }
-
-      // If priceMax was the issue, sort by price ascending in fallback
-      if (priceMax && !location) {
-        apartments = await Apartment.find(fallbackFilter).sort({ price: 1 }).limit(10).lean();
-      } else {
-        apartments = await Apartment.find(fallbackFilter).limit(10).lean();
-      }
+      apartments = await Apartment.find(fallbackFilter).limit(10).lean();
     }
 
     // Smart semantic-style ranking & scoring
@@ -199,21 +198,14 @@ async function searchApartments({
       if (priceMax) {
         const diff = Number(priceMax) - (apt.price || 0);
         if (diff >= 0) {
-          // Within budget: higher score, plus bonus for being close to max (optional)
           score += 100;
           score += (1 - (diff / Number(priceMax))) * 30;
-        } else {
-          // Over budget: penalty based on how much over
-          const over = (apt.price || 0) - Number(priceMax);
-          score -= Math.min(100, (over / Number(priceMax)) * 50);
         }
       }
 
       if (priceMin) {
         if (apt.price >= Number(priceMin)) {
           score += 50;
-        } else {
-          score -= 50;
         }
       }
 
@@ -222,19 +214,10 @@ async function searchApartments({
         score += 80;
       }
 
-      // 7. Freshness bonus
-      if (apt.createdAt) {
-        const weeksOld = (Date.now() - new Date(apt.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 7);
-        if (weeksOld < 4) score += 20;
-      }
-
       return { apt, score };
     });
 
-    // Sort by best matches first
     scoredApartments.sort((a, b) => b.score - a.score);
-
-    // Limit to top 10 results
     const results = scoredApartments.slice(0, 10).map(x => x.apt);
 
     return {
