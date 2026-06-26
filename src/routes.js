@@ -14,7 +14,7 @@ const chatbot = require('./controllers/chatbot.controller');
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 }, // Increased to 50MB for videos
 });
 
 router.post('/auth/register', auth.register);

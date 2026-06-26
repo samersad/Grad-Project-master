@@ -14,8 +14,15 @@ function hasUnsignedCredentials() {
 }
 
 function uploadBuffer(file, folder) {
+  const config = cloudinary.config();
   if (!hasSignedCredentials() && !hasUnsignedCredentials()) {
-    throw new ApiError(500, 'Cloudinary cloud name and upload preset or API credentials are required');
+    console.error('Cloudinary Configuration Error:', {
+      cloudName: config.cloud_name,
+      apiKey: !!config.api_key,
+      apiSecret: !!config.api_secret,
+      uploadPreset: !!env.cloudinary.uploadPreset,
+    });
+    throw new ApiError(500, `Cloudinary configuration missing. Please check CLOUDINARY_CLOUD_NAME and either CLOUDINARY_API_KEY/SECRET or CLOUDINARY_UPLOAD_PRESET`);
   }
 
   return new Promise((resolve, reject) => {
@@ -25,13 +32,20 @@ function uploadBuffer(file, folder) {
       resource_type: resourceType,
     };
     const done = (error, result) => {
-      if (error) return reject(error);
+      if (error) {
+        console.error('Cloudinary Upload Rejection:', error);
+        return reject(error);
+      }
       return resolve(result);
     };
 
     const stream = hasSignedCredentials()
       ? cloudinary.uploader.upload_stream(options, done)
       : cloudinary.uploader.unsigned_upload_stream(env.cloudinary.uploadPreset, options, done);
+
+    if (!file.buffer) {
+      return reject(new ApiError(400, 'File buffer is missing'));
+    }
 
     Readable.from(file.buffer).pipe(stream);
   });

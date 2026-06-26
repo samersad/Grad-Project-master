@@ -14,6 +14,13 @@ function errorHandler(err, _req, res, _next) {
   if (err.name === 'ValidationError') {
     error = new ApiError(422, 'Validation failed', Object.values(err.errors).map((e) => ({ field: e.path, message: e.message })));
   }
+  if (err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      error = new ApiError(413, 'File too large. Maximum size is 20MB');
+    } else {
+      error = new ApiError(400, `Upload error: ${err.message}`);
+    }
+  }
 
   const statusCode = error.statusCode || 500;
   const payload = {
