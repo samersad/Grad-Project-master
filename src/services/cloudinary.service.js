@@ -33,7 +33,6 @@ function uploadBuffer(file, folder) {
     const options = {
       folder,
       resource_type: resourceType,
-      chunk_size: isVideo ? 6000000 : undefined, // 6MB chunks for videos
       timeout: 120000, // 2 minute timeout for huge files
     };
 
@@ -45,10 +44,10 @@ function uploadBuffer(file, folder) {
       return resolve(result);
     };
 
-    // Use upload_large_stream for signed uploads to support "huge MB"
+    // Use upload_stream for signed uploads
     // For unsigned, we continue using unsigned_upload_stream
     const stream = hasSignedCredentials()
-      ? cloudinary.uploader.upload_large_stream(options, done)
+      ? cloudinary.uploader.upload_stream(options, done)
       : cloudinary.uploader.unsigned_upload_stream(env.cloudinary.uploadPreset, options, done);
 
     if (!file.buffer) {
