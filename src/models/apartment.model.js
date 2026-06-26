@@ -17,7 +17,7 @@ const apartmentSchema = new mongoose.Schema(
     available_people: { type: Number, default: 1 },
     address: { type: String, default: null },
     city: { type: String, default: 'Assuit' },
-    district: { type: String, default: 'فيريال' },
+    district: { type: String, default: 'فريال' },
     locationAddress: { type: String, default: null },
     lat: { type: Number, default: null },
     lng: { type: Number, default: null },
