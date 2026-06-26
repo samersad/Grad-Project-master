@@ -45,9 +45,10 @@ function uploadBuffer(file, folder) {
       return resolve(result);
     };
 
-    // Use upload_stream for all types, but options help for videos
+    // Use upload_large_stream for signed uploads to support "huge MB"
+    // For unsigned, we continue using unsigned_upload_stream
     const stream = hasSignedCredentials()
-      ? cloudinary.uploader.upload_stream(options, done)
+      ? cloudinary.uploader.upload_large_stream(options, done)
       : cloudinary.uploader.unsigned_upload_stream(env.cloudinary.uploadPreset, options, done);
 
     if (!file.buffer) {
