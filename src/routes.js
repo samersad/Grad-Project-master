@@ -9,6 +9,7 @@ const notifications = require('./controllers/notification.controller');
 const chats = require('./controllers/chat.controller');
 const storage = require('./controllers/storage.controller');
 const functions = require('./controllers/function.controller');
+const chatbot = require('./controllers/chatbot.controller');
 
 const router = express.Router();
 const upload = multer({
@@ -74,5 +75,7 @@ router.post('/rpc/rate_booking', authenticate, bookings.rateBooking);
 router.post('/functions/send-booking-notification', authenticate, functions.sendBookingNotification);
 router.post('/functions/send-chat-notification', authenticate, functions.sendChatNotification);
 router.post('/functions/send-booking-status-notification', authenticate, functions.sendBookingStatusNotification);
+
+router.post('/chatbot', optionalAuthenticate, chatbot.handleChat);
 
 module.exports = router;
