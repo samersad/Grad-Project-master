@@ -41,9 +41,11 @@ function normalizeArabicText(str) {
  */
 async function searchApartments({
   location,
+  locationVariants = [],
   rooms,
   priceMin,
   priceMax,
+  priceOperator,
   peopleCount,
   ratingPref,
   verifiedPref,
@@ -51,8 +53,19 @@ async function searchApartments({
 }) {
   const filter = {};
   const conditions = [];
+  const searchFilters = {
+    location,
+    locationVariants,
+    rooms,
+    priceMin,
+    priceMax,
+    priceOperator,
+    peopleCount,
+    ratingPref,
+    verifiedPref,
+    query,
+  };
 
-  // Exclude test/junk apartments below 100 EGP or with single-char names
   conditions.push({ price: { $gte: 100 } });
   conditions.push({
     $and: [
@@ -62,34 +75,28 @@ async function searchApartments({
     ],
   });
 
-  // Location search (City, District, Address)
-  if (location) {
-    const locationRegex = searchRegex(location);
-    if (locationRegex) {
+  const effectiveLocations = [...new Set([location, ...locationVariants].filter(Boolean))];
+  if (effectiveLocations.length > 0) {
+    const locationRegexes = effectiveLocations.map(searchRegex).filter(Boolean);
+    if (locationRegexes.length > 0) {
       conditions.push({
-        $or: [
+        $or: locationRegexes.flatMap((locationRegex) => [
           { city: locationRegex },
           { district: locationRegex },
           { address: locationRegex },
           { locationAddress: locationRegex },
-        ],
+        ]),
       });
     }
   }
 
-  // Room count search
   if (rooms) {
     const roomCount = Number(rooms);
     if (Number.isFinite(roomCount) && roomCount > 0) {
-      conditions.push({
-        $or: [
-          { bedrooms: roomCount },
-        ],
-      });
+      conditions.push({ $or: [{ bedrooms: roomCount }] });
     }
   }
 
-  // People capacity / Number of people search
   if (peopleCount) {
     const cap = Number(peopleCount);
     if (Number.isFinite(cap) && cap > 0) {
@@ -102,24 +109,21 @@ async function searchApartments({
     }
   }
 
-  // Price range matching (Budget)
   const priceFilter = {};
-  if (priceMin) {
-    priceFilter.$gte = Number(priceMin);
+  if (priceMin != null) {
+    priceFilter[priceOperator === 'gt' ? '$gt' : '$gte'] = Number(priceMin);
   }
-  if (priceMax) {
-    priceFilter.$lte = Number(priceMax);
+  if (priceMax != null) {
+    priceFilter[priceOperator === 'lt' ? '$lt' : '$lte'] = Number(priceMax);
   }
   if (Object.keys(priceFilter).length > 0) {
     conditions.push({ price: priceFilter });
   }
 
-  // Verified preference
   if (verifiedPref) {
     conditions.push({ verified: true });
   }
 
-  // Free-text query (Features like furnished, near university, etc.)
   if (query) {
     const queryRegex = searchRegex(query);
     if (queryRegex) {
@@ -141,75 +145,68 @@ async function searchApartments({
   try {
     let apartments = await Apartment.find(filter).lean();
 
-    // STRICT MODE: If price was specified and no matches found, do NOT fallback
-    if (apartments.length === 0 && (priceMin || priceMax)) {
-      return { apartments: [], isFallback: false };
+    if (apartments.length === 0 && (priceMin != null || priceMax != null)) {
+      return { apartments: [], isFallback: false, mongoFilter: filter, searchFilters };
     }
 
-    // If no exact matches exist for NON-price queries, get closest available apartments as fallback
     let isFallback = false;
     if (apartments.length === 0) {
       isFallback = true;
       const fallbackFilter = { price: { $gte: 100 } };
-      
-      // If location was requested, try fallback to just location
-      if (location) {
-        const locationRegex = searchRegex(location);
-        if (locationRegex) {
-          fallbackFilter.$or = [
+      if (effectiveLocations.length > 0) {
+        const locationRegexes = effectiveLocations.map(searchRegex).filter(Boolean);
+        if (locationRegexes.length > 0) {
+          fallbackFilter.$or = locationRegexes.flatMap((locationRegex) => [
             { city: locationRegex },
             { district: locationRegex },
             { address: locationRegex },
-          ];
+          ]);
         }
       }
       apartments = await Apartment.find(fallbackFilter).limit(10).lean();
     }
 
-    // Smart semantic-style ranking & scoring
     const scoredApartments = apartments.map((apt) => {
       let score = 0;
 
-      // 1. Availability preference (Crucial)
-      const isAvailable = apt.available_people > 0;
-      if (isAvailable) score += 200;
-
-      // 2. Verified preference (Trustworthiness)
+      if ((apt.available_people || 0) > 0) score += 200;
       if (apt.verified) score += 100;
-
-      // 3. Rating score (Popularity)
       if (apt.rating_average) score += apt.rating_average * 20;
 
-      // 4. Exact location match score
-      if (location) {
-        const normLoc = normalizeArabicText(location);
+      if (effectiveLocations.length > 0) {
         const normCity = normalizeArabicText(apt.city);
         const normDistrict = normalizeArabicText(apt.district);
         const normAddress = normalizeArabicText(apt.address || apt.locationAddress);
+        const locationMatched = effectiveLocations.some((candidate) => {
+          const normLoc = normalizeArabicText(candidate);
+          return normCity.includes(normLoc) || normDistrict.includes(normLoc);
+        });
+        const addressMatched = effectiveLocations.some((candidate) => {
+          const normLoc = normalizeArabicText(candidate);
+          return normAddress.includes(normLoc);
+        });
 
-        if (normCity.includes(normLoc) || normDistrict.includes(normLoc)) {
+        if (locationMatched) {
           score += 150;
-        } else if (normAddress.includes(normLoc)) {
+        } else if (addressMatched) {
           score += 100;
         }
       }
 
-      // 5. Price suitability score
-      if (priceMax) {
+      if (priceMax != null) {
         const diff = Number(priceMax) - (apt.price || 0);
         if (diff >= 0) {
           score += 100;
-          score += (1 - (diff / Number(priceMax))) * 30;
+          if (Number(priceMax) > 0) {
+            score += (1 - diff / Number(priceMax)) * 30;
+          }
         }
       }
 
-      if (priceMin) {
-        if (apt.price >= Number(priceMin)) {
-          score += 50;
-        }
+      if (priceMin != null && apt.price >= Number(priceMin)) {
+        score += 50;
       }
 
-      // 6. Rating preference bonus
       if (ratingPref && apt.rating_average >= 4.0) {
         score += 80;
       }
@@ -218,15 +215,17 @@ async function searchApartments({
     });
 
     scoredApartments.sort((a, b) => b.score - a.score);
-    const results = scoredApartments.slice(0, 10).map(x => x.apt);
+    const results = scoredApartments.slice(0, 10).map((item) => item.apt);
 
     return {
       apartments: results.map(formatApartmentForResponse),
-      isFallback
+      isFallback,
+      mongoFilter: filter,
+      searchFilters,
     };
   } catch (error) {
     console.error('Database apartment search failed:', error.message);
-    return { apartments: [], isFallback: false };
+    return { apartments: [], isFallback: false, mongoFilter: filter, searchFilters };
   }
 }
 

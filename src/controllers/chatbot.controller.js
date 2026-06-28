@@ -2,8 +2,10 @@
  * Chatbot Controller — Database-Driven AI Responses
  */
 
+const logger = require('../config/logger');
 const { generateChatResponse } = require('../services/aiOpenaiService');
 const { detectIntentAndEntities, isArabicMessage } = require('../services/aiIntentService');
+const { parseApartmentSearch } = require('../services/aiApartmentSearchParser');
 const { searchApartments } = require('../services/aiApartmentService');
 const { getFaqAnswer } = require('../services/aiFaqService');
 const db = require('../services/aiDatabaseService');
@@ -33,22 +35,78 @@ async function handleChat(req, res, next) {
     const cleanMessage = message.trim();
     const language = isArabicMessage(cleanMessage) ? 'ar' : 'en';
 
-    // 1. Detect Intent and Entities (Thinking phase)
+    // 1. Detect intent first, then refine apartment searches with the structured parser.
     const analysis = await detectIntentAndEntities(cleanMessage);
     const { intent, entities } = analysis;
 
     let data = null;
     let suggestions = [];
     let answerContext = '';
+    let searchFilters = null;
+    let parserSource = null;
+    let needsClarification = false;
+    let clarificationQuestion = null;
 
-    // 2. Fetch Real Data from Database based on Intent
+    const shouldSearchApartment =
+      intent === 'search_apartment' ||
+      /[\u0600-\u06ffa-zA-Z]/.test(cleanMessage) && /(?:\bفي\b|\bin\b|\bunder\b|\bover\b|\bmore than\b|\bless than\b|\bbetween\b|\bprice\b|\bسعر\b|\bشقة\b|\bشقق\b|\bflat\b|\bapartment\b|\broom\b|\bغرفة\b|\bاوضة\b|\bشقه\b)/i.test(cleanMessage);
 
-    // search_apartment: Search with location, price, rooms, etc.
-    if (intent === 'search_apartment') {
-      const result = await searchApartments(entities);
+    // 2. Fetch real data from the database based on intent.
+    if (shouldSearchApartment) {
+      const parsedSearch = await parseApartmentSearch(cleanMessage, entities);
+      searchFilters = parsedSearch.filters;
+      parserSource = parsedSearch.source;
+      needsClarification = parsedSearch.needsClarification;
+      clarificationQuestion = parsedSearch.clarificationQuestion;
+
+      logger.info(
+        {
+          originalMessage: cleanMessage,
+          detectedIntent: intent,
+          parserSource,
+          extractedFilters: searchFilters,
+        },
+        'AI apartment search parsed',
+      );
+
+      if (needsClarification) {
+        const reply = clarificationQuestion || (language === 'ar'
+          ? 'ممكن توضح الحي أو نطاق السعر اللي تقصده؟'
+          : 'Can you clarify the district or price range?');
+
+        return res.json({
+          success: true,
+          reply,
+          suggestions: [],
+          data: null,
+          intent: 'search_apartment',
+          entities: {
+            ...entities,
+            searchFilters,
+          },
+          searchFilters,
+          needsClarification: true,
+          clarificationQuestion: reply,
+          language,
+        });
+      }
+
+      const result = await searchApartments(searchFilters);
       suggestions = result.apartments;
       data = result.apartments;
-      answerContext = buildApartmentContext(result.apartments, entities, language, result.isFallback);
+
+      logger.info(
+        {
+          originalMessage: cleanMessage,
+          detectedIntent: intent,
+          parserSource,
+          extractedFilters: searchFilters,
+          mongoFilter: result.mongoFilter || null,
+        },
+        'AI apartment search database query prepared',
+      );
+
+      answerContext = buildApartmentContext(result.apartments, searchFilters, language, result.isFallback);
     }
 
     // booking_info: Information about how to book or platform stats
@@ -104,24 +162,34 @@ async function handleChat(req, res, next) {
       }
     }
 
-    // 3. Generate Natural Language Response using AI (Grounded in DB data)
+    // 3. Generate natural language response using AI grounded in DB data.
     const reply = await generateChatResponse({
       userMessage: cleanMessage,
-      intent,
-      entities,
+      intent: shouldSearchApartment ? 'search_apartment' : intent,
+      entities: {
+        ...entities,
+        searchFilters,
+      },
       answerContext,
       language: intent === 'contact_support' ? 'ar' : language,
     });
 
-    // 4. Return Structured Result (Reply + Suggestions)
+    // 4. Return structured result (reply + suggestions).
     return res.json({
       success: true,
       reply,
       suggestions,
       data: suggestions.length > 0 ? suggestions : data,
-      intent,
-      entities,
-      language
+      intent: shouldSearchApartment ? 'search_apartment' : intent,
+      entities: {
+        ...entities,
+        searchFilters,
+      },
+      searchFilters,
+      parserSource,
+      needsClarification,
+      clarificationQuestion,
+      language,
     });
   } catch (error) {
     next(error);
@@ -131,7 +199,7 @@ async function handleChat(req, res, next) {
 /**
  * Build a text context from apartment listings for the AI to reason with.
  */
-function buildApartmentContext(apartments, entities, language, isFallback = false) {
+function buildApartmentContext(apartments, filters, language, isFallback = false) {
   if (!apartments || apartments.length === 0) {
     return language === 'ar'
       ? 'لم يتم العثور على شقق مطابقة حالياً. اقترح على المستخدم تغيير المكان أو عدد الغرف أو الميزانية.'
@@ -146,14 +214,12 @@ function buildApartmentContext(apartments, entities, language, isFallback = fals
   }
 
   const criteria = [
-    entities.location ? `location: ${entities.location}` : null,
-    entities.rooms ? `bedrooms: ${entities.rooms}` : null,
-    entities.priceMin ? `minimum price: ${entities.priceMin} EGP` : null,
-    entities.priceMax ? `maximum price: ${entities.priceMax} EGP` : null,
-    entities.peopleCount ? `capacity for: ${entities.peopleCount} people` : null,
-    entities.ratingPref ? `prefer high rating` : null,
-    entities.verifiedPref ? `prefer verified` : null,
-    entities.query ? `features: ${entities.query}` : null,
+    filters?.district ? `district: ${filters.district}` : null,
+    filters?.propertyType ? `property type: ${filters.propertyType}` : null,
+    filters?.minPrice != null ? `minimum price: ${filters.minPrice} EGP` : null,
+    filters?.maxPrice != null ? `maximum price: ${filters.maxPrice} EGP` : null,
+    filters?.priceOperator ? `price operator: ${filters.priceOperator}` : null,
+    filters?.query ? `features: ${filters.query}` : null,
   ]
     .filter(Boolean)
     .join(', ');

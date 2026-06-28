@@ -4,16 +4,18 @@
 
 const db = require('./aiDatabaseService');
 
-async function searchApartments(entities) {
+async function searchApartments(filters) {
   return db.searchApartments({
-    location: entities.location || null,
-    rooms: entities.rooms || null,
-    priceMin: entities.priceMin || null,
-    priceMax: entities.priceMax || null,
-    peopleCount: entities.peopleCount || null,
-    ratingPref: entities.ratingPref || false,
-    verifiedPref: entities.verifiedPref || false,
-    query: entities.query || null,
+    location: filters?.district || filters?.location || null,
+    locationVariants: filters?.districtVariants || filters?.locationVariants || [],
+    rooms: filters?.rooms || filters?.bedrooms || null,
+    priceMin: filters?.minPrice ?? filters?.priceMin ?? null,
+    priceMax: filters?.maxPrice ?? filters?.priceMax ?? null,
+    priceOperator: filters?.priceOperator || null,
+    peopleCount: filters?.peopleCount || null,
+    ratingPref: filters?.ratingPref || false,
+    verifiedPref: filters?.verifiedPref || false,
+    query: filters?.query || null,
   });
 }
 

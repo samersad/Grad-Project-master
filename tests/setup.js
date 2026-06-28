@@ -4,3 +4,6 @@ process.env.JWT_REFRESH_SECRET = 'test_refresh_secret';
 process.env.JWT_VERIFY_SECRET = 'test_verify_secret';
 process.env.JWT_RESET_SECRET = 'test_reset_secret';
 process.env.ENABLE_CRON_JOBS = 'false';
+process.env.OPENAI_API_KEY = '';
+process.env.OPENAI_BASE_URL = '';
+process.env.LOG_LEVEL = 'silent';
