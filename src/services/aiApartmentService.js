@@ -8,13 +8,16 @@ async function searchApartments(filters) {
   return db.searchApartments({
     location: filters?.district || filters?.location || null,
     locationVariants: filters?.districtVariants || filters?.locationVariants || [],
-    rooms: filters?.rooms || filters?.bedrooms || null,
+    rooms: filters?.bedrooms || filters?.rooms || null,
+    bathrooms: filters?.bathrooms || null,
+    floor: filters?.floor || null,
     priceMin: filters?.minPrice ?? filters?.priceMin ?? null,
     priceMax: filters?.maxPrice ?? filters?.priceMax ?? null,
     priceOperator: filters?.priceOperator || null,
     peopleCount: filters?.peopleCount || null,
     ratingPref: filters?.ratingPref || false,
     verifiedPref: filters?.verifiedPref || false,
+    minRating: filters?.minRating || null,
     query: filters?.query || null,
   });
 }

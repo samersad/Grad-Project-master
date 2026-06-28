@@ -52,4 +52,51 @@ describe('aiDatabaseService searchApartments', () => {
     expect(result.apartments).toHaveLength(1);
     expect(result.mongoFilter).toBe(mongoFilter);
   });
+
+  it('adds bedroom, bathroom, floor, capacity, verified, and rating filters', async () => {
+    Apartment.find
+      .mockReturnValueOnce({
+        lean: jest.fn(async () => []),
+      })
+      .mockReturnValueOnce({
+        limit: jest.fn(() => ({
+          lean: jest.fn(async () => []),
+        })),
+      });
+
+    await db.searchApartments({
+      rooms: 2,
+      bathrooms: 1,
+      floor: 3,
+      peopleCount: 2,
+      verifiedPref: true,
+      minRating: 4,
+    });
+
+    const mongoFilter = Apartment.find.mock.calls[0][0];
+
+    expect(mongoFilter.$and).toEqual(expect.arrayContaining([
+      { $or: [{ bedrooms: 2 }] },
+      { bathrooms: 1 },
+      { floor: 3 },
+      { verified: true },
+      { rating_average: { $gte: 4 } },
+    ]));
+    expect(mongoFilter.$and).toEqual(expect.arrayContaining([
+      { $or: [{ max_people: { $gte: 2 } }, { available_people: { $gte: 2 } }] },
+    ]));
+  });
+
+  it('returns live search metadata from apartment districts and cities', async () => {
+    Apartment.distinct
+      .mockResolvedValueOnce(['فريال', 'سيتي', null])
+      .mockResolvedValueOnce(['Assuit', null]);
+
+    const metadata = await db.getSearchMetadata();
+
+    expect(metadata).toEqual({
+      districts: ['فريال', 'سيتي'],
+      cities: ['Assuit'],
+    });
+  });
 });

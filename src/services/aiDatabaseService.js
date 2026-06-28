@@ -43,12 +43,15 @@ async function searchApartments({
   location,
   locationVariants = [],
   rooms,
+  bathrooms,
+  floor,
   priceMin,
   priceMax,
   priceOperator,
   peopleCount,
   ratingPref,
   verifiedPref,
+  minRating,
   query,
 }) {
   const filter = {};
@@ -57,12 +60,15 @@ async function searchApartments({
     location,
     locationVariants,
     rooms,
+    bathrooms,
+    floor,
     priceMin,
     priceMax,
     priceOperator,
     peopleCount,
     ratingPref,
     verifiedPref,
+    minRating,
     query,
   };
 
@@ -97,6 +103,20 @@ async function searchApartments({
     }
   }
 
+  if (bathrooms) {
+    const bathroomCount = Number(bathrooms);
+    if (Number.isFinite(bathroomCount) && bathroomCount > 0) {
+      conditions.push({ bathrooms: bathroomCount });
+    }
+  }
+
+  if (floor) {
+    const floorNumber = Number(floor);
+    if (Number.isFinite(floorNumber) && floorNumber > 0) {
+      conditions.push({ floor: floorNumber });
+    }
+  }
+
   if (peopleCount) {
     const cap = Number(peopleCount);
     if (Number.isFinite(cap) && cap > 0) {
@@ -124,16 +144,23 @@ async function searchApartments({
     conditions.push({ verified: true });
   }
 
+  if (minRating) {
+    const ratingNumber = Number(minRating);
+    if (Number.isFinite(ratingNumber) && ratingNumber > 0) {
+      conditions.push({ rating_average: { $gte: ratingNumber } });
+    }
+  }
+
   if (query) {
-    const queryRegex = searchRegex(query);
-    if (queryRegex) {
+    const queryRegexes = String(query).split(/\s+/).map(searchRegex).filter(Boolean);
+    if (queryRegexes.length > 0) {
       conditions.push({
-        $or: [
+        $or: queryRegexes.flatMap((queryRegex) => [
           { name: queryRegex },
           { description: queryRegex },
           { address: queryRegex },
           { locationAddress: queryRegex },
-        ],
+        ]),
       });
     }
   }
@@ -172,6 +199,10 @@ async function searchApartments({
       if ((apt.available_people || 0) > 0) score += 200;
       if (apt.verified) score += 100;
       if (apt.rating_average) score += apt.rating_average * 20;
+      if (rooms != null && apt.bedrooms === Number(rooms)) score += 80;
+      if (bathrooms != null && apt.bathrooms === Number(bathrooms)) score += 40;
+      if (floor != null && apt.floor === Number(floor)) score += 25;
+      if (peopleCount != null && (apt.available_people || apt.max_people || 0) >= Number(peopleCount)) score += 60;
 
       if (effectiveLocations.length > 0) {
         const normCity = normalizeArabicText(apt.city);
@@ -349,6 +380,23 @@ async function getPlatformStats() {
   }
 }
 
+async function getSearchMetadata() {
+  try {
+    const [districts, cities] = await Promise.all([
+      Apartment.distinct('district', { district: { $ne: null }, price: { $gte: 100 } }),
+      Apartment.distinct('city', { city: { $ne: null }, price: { $gte: 100 } }),
+    ]);
+
+    return {
+      districts: districts.filter(Boolean),
+      cities: cities.filter(Boolean),
+    };
+  } catch (error) {
+    console.error('Database search metadata query failed:', error.message);
+    return { districts: [], cities: [] };
+  }
+}
+
 /**
  * Format an apartment document for the chatbot response.
  * Support BOTH snake_case and camelCase properties for absolute compatibility.
@@ -420,4 +468,5 @@ module.exports = {
   getTopRatedApartments,
   getCheapestApartments,
   getPlatformStats,
+  getSearchMetadata,
 };

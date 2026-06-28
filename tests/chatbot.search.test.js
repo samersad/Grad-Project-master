@@ -47,6 +47,19 @@ jest.mock('../src/services/aiApartmentService', () => ({
   })),
 }));
 
+jest.mock('../src/services/aiDatabaseService', () => ({
+  getSearchMetadata: jest.fn(async () => ({
+    districts: ['فريال', 'سيتي', 'سيد', 'الجمهوريه', 'يسري راغب', 'آخر'],
+    cities: ['Assuit'],
+  })),
+  getPlatformStats: jest.fn(async () => ({
+    totalBookings: 0,
+    activeBookings: 0,
+    availableApartments: 1,
+    cities: ['Assuit'],
+  })),
+}));
+
 jest.mock('../src/services/aiOpenaiService', () => ({
   generateChatResponse: jest.fn(async () => 'لقيتلك شقة مناسبة.'),
 }));

@@ -46,18 +46,21 @@ async function handleChat(req, res, next) {
     let parserSource = null;
     let needsClarification = false;
     let clarificationQuestion = null;
+    let quickReplies = [];
 
     const shouldSearchApartment =
       intent === 'search_apartment' ||
-      /[\u0600-\u06ffa-zA-Z]/.test(cleanMessage) && /(?:\bفي\b|\bin\b|\bunder\b|\bover\b|\bmore than\b|\bless than\b|\bbetween\b|\bprice\b|\bسعر\b|\bشقة\b|\bشقق\b|\bflat\b|\bapartment\b|\broom\b|\bغرفة\b|\bاوضة\b|\bشقه\b)/i.test(cleanMessage);
+      /[\u0600-\u06ffa-zA-Z]/.test(cleanMessage) && /(?:\bفي\b|\bin\b|\bunder\b|\bover\b|\bmore than\b|\bless than\b|\bbetween\b|\bprice\b|\bسعر\b|\bشقة\b|\bشقق\b|\bflat\b|\bapartment\b|\broom\b|\brooms\b|\bbath\b|\bfloor\b|\bverified\b|\bغرفة\b|\bغرف\b|\bحمام\b|\bدور\b|\bموثق\b|\bاوضة\b|\bشقه\b)/i.test(cleanMessage);
 
     // 2. Fetch real data from the database based on intent.
     if (shouldSearchApartment) {
-      const parsedSearch = await parseApartmentSearch(cleanMessage, entities);
+      const searchMetadata = await db.getSearchMetadata();
+      const parsedSearch = await parseApartmentSearch(cleanMessage, entities, searchMetadata);
       searchFilters = parsedSearch.filters;
       parserSource = parsedSearch.source;
       needsClarification = parsedSearch.needsClarification;
       clarificationQuestion = parsedSearch.clarificationQuestion;
+      quickReplies = buildQuickReplies(language, searchFilters, needsClarification);
 
       logger.info(
         {
@@ -65,6 +68,7 @@ async function handleChat(req, res, next) {
           detectedIntent: intent,
           parserSource,
           extractedFilters: searchFilters,
+          availableDistricts: searchMetadata.districts,
         },
         'AI apartment search parsed',
       );
@@ -87,6 +91,7 @@ async function handleChat(req, res, next) {
           searchFilters,
           needsClarification: true,
           clarificationQuestion: reply,
+          quickReplies,
           language,
         });
       }
@@ -107,6 +112,7 @@ async function handleChat(req, res, next) {
       );
 
       answerContext = buildApartmentContext(result.apartments, searchFilters, language, result.isFallback);
+      quickReplies = buildQuickReplies(language, searchFilters, false, result.apartments.length);
     }
 
     // booking_info: Information about how to book or platform stats
@@ -189,6 +195,7 @@ async function handleChat(req, res, next) {
       parserSource,
       needsClarification,
       clarificationQuestion,
+      quickReplies,
       language,
     });
   } catch (error) {
@@ -219,6 +226,12 @@ function buildApartmentContext(apartments, filters, language, isFallback = false
     filters?.minPrice != null ? `minimum price: ${filters.minPrice} EGP` : null,
     filters?.maxPrice != null ? `maximum price: ${filters.maxPrice} EGP` : null,
     filters?.priceOperator ? `price operator: ${filters.priceOperator}` : null,
+    filters?.bedrooms ? `bedrooms: ${filters.bedrooms}` : null,
+    filters?.bathrooms ? `bathrooms: ${filters.bathrooms}` : null,
+    filters?.floor ? `floor: ${filters.floor}` : null,
+    filters?.peopleCount ? `capacity for: ${filters.peopleCount}` : null,
+    filters?.verifiedPref ? 'verified only' : null,
+    filters?.minRating ? `minimum rating: ${filters.minRating}` : null,
     filters?.query ? `features: ${filters.query}` : null,
   ]
     .filter(Boolean)
@@ -241,6 +254,29 @@ function buildApartmentContext(apartments, filters, language, isFallback = false
     .join('\n');
 
   return `${statusMessage}\nCriteria: ${criteria || 'none'}\nResults from Database:\n${listings}`;
+}
+
+function buildQuickReplies(language, filters = {}, needsClarification = false, resultCount = null) {
+  const arabic = language === 'ar';
+
+  if (needsClarification) {
+    return arabic
+      ? ['اختار منطقة', 'حدد الميزانية', 'اعرض الشقق الموثقة']
+      : ['Choose district', 'Set budget', 'Verified only'];
+  }
+
+  if (resultCount === 0) {
+    return arabic
+      ? ['زود الميزانية', 'غير المنطقة', 'قلل عدد الغرف']
+      : ['Increase budget', 'Change district', 'Fewer rooms'];
+  }
+
+  const replies = [];
+  if (!filters?.verifiedPref) replies.push(arabic ? 'شقق موثقة فقط' : 'Verified only');
+  if (!filters?.ratingPref) replies.push(arabic ? 'الأعلى تقييماً' : 'Highest rated');
+  if (!filters?.maxPrice) replies.push(arabic ? 'حدد ميزانية' : 'Set budget');
+  if (!filters?.bedrooms) replies.push(arabic ? 'حدد عدد الغرف' : 'Set bedrooms');
+  return replies.slice(0, 4);
 }
 
 /**

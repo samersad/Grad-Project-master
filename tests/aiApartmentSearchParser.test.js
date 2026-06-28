@@ -53,6 +53,29 @@ describe('aiApartmentSearchParser', () => {
     expect(result.filters.maxPrice).toBe(5000);
   });
 
+  it('extracts extra client search filters', async () => {
+    const result = await parseApartmentSearch('عايز شقة غرفتين وحمامين في سيتي تحت 5000 موثقة');
+
+    expect(result.needsClarification).toBe(false);
+    expect(result.filters.district).toBe('سيتي');
+    expect(result.filters.bedrooms).toBe(2);
+    expect(result.filters.bathrooms).toBe(2);
+    expect(result.filters.maxPrice).toBe(5000);
+    expect(result.filters.verifiedPref).toBe(true);
+  });
+
+  it('matches dynamic districts with fuzzy spelling', async () => {
+    const result = await parseApartmentSearch(
+      'show me apartments in Nasr Cty under 6000',
+      {},
+      { districts: ['Nasr City'] },
+    );
+
+    expect(result.needsClarification).toBe(false);
+    expect(result.filters.district).toBe('Nasr City');
+    expect(result.filters.maxPrice).toBe(6000);
+  });
+
   it('asks for clarification when filters are missing', async () => {
     const result = await parseApartmentSearch('عاوز شقة');
 
