@@ -38,6 +38,7 @@ const STATIC_DISTRICT_ALIASES = [
 
 const APARTMENT_HINTS = ['شقة', 'شقق', 'شقه', 'apartment', 'apartments', 'flat', 'flats', 'سكن'];
 const ROOM_HINTS = ['غرفة', 'غرف', 'اوضة', 'اوض', 'أوضة', 'أوض', 'room', 'rooms', 'bedroom', 'bedrooms'];
+const VALID_PARSE_INTENTS = ['search_apartment', 'not_apartment_search'];
 
 function normalizeSearchText(value) {
   return String(value || '')
@@ -79,6 +80,46 @@ function aliasMatchesMessage(normalizedMessage, alias) {
 function containsAny(text, variants) {
   const normalized = normalizeForMatch(text);
   return variants.some((variant) => normalized.includes(normalizeForMatch(variant)));
+}
+
+function inferLocalSearchIntent(message, filters) {
+  const normalized = normalizeForMatch(message);
+  if (isLikelyGreeting(normalized)) return false;
+
+  const hasSearchSignal = containsAny(normalized, [
+    ...APARTMENT_HINTS,
+    ...ROOM_HINTS,
+    'rent',
+    'search',
+    'find',
+    'show me',
+    'need',
+    'عاوز',
+    'عايز',
+    'محتاج',
+    'هاتلي',
+    'دور',
+  ]);
+
+  const hasFilterSignal = Boolean(
+    filters.district ||
+      filters.minPrice != null ||
+      filters.maxPrice != null ||
+      filters.bedrooms ||
+      filters.bathrooms ||
+      filters.floor ||
+      filters.peopleCount ||
+      filters.verifiedPref ||
+      filters.ratingPref ||
+      filters.query,
+  );
+
+  return hasSearchSignal || hasFilterSignal;
+}
+
+function isLikelyGreeting(normalized) {
+  if (normalized.length > 35) return false;
+  return /^(hi|hello|hey|good morning|good evening|thanks|thank you|مرحبا|اهلا|اهلن|السلام|سلام|صباح|مساء|ازيك|هاي|شكرا)\b/i.test(normalized);
 }
 
 function unique(values) {
@@ -410,6 +451,10 @@ function needsClarification(message, filters) {
   ]);
 }
 
+function normalizeParseIntent(value) {
+  return VALID_PARSE_INTENTS.includes(value) ? value : 'not_apartment_search';
+}
+
 function normalizeOpenAIResult(result, message, options = {}) {
   const parsed = result || {};
   const localFilters = buildLocalFilters(message, {}, options);
@@ -448,11 +493,24 @@ async function parseApartmentSearch(message, seedFilters = {}, options = {}) {
   if (openai) {
     try {
       const parsed = await openaiParse(text, options);
+      const detectedIntent = normalizeParseIntent(parsed.intent);
+      if (detectedIntent !== 'search_apartment') {
+        return {
+          source: 'openai',
+          detectedIntent,
+          filters: seeded,
+          needsClarification: false,
+          clarificationQuestion: null,
+          confidence: Number(parsed.confidence) || 0,
+          reason: typeof parsed.reason === 'string' ? parsed.reason : null,
+        };
+      }
+
       const filters = normalizeOpenAIResult(parsed, text, options);
       const clarification = Boolean(parsed.needsClarification) || needsClarification(text, filters);
       return {
         source: 'openai',
-        detectedIntent: 'search_apartment',
+        detectedIntent,
         filters,
         needsClarification: clarification,
         clarificationQuestion:
@@ -461,10 +519,25 @@ async function parseApartmentSearch(message, seedFilters = {}, options = {}) {
             : clarification
               ? clarifyQuestion(text, filters)
               : null,
+        confidence: Number(parsed.confidence) || 0,
+        reason: typeof parsed.reason === 'string' ? parsed.reason : null,
       };
     } catch (error) {
       logger.warn({ error: error.message }, 'OpenAI apartment parsing failed, using rule-based parser');
     }
+  }
+
+  const isSearch = inferLocalSearchIntent(text, seeded);
+  if (!isSearch) {
+    return {
+      source: 'rules',
+      detectedIntent: 'not_apartment_search',
+      filters: seeded,
+      needsClarification: false,
+      clarificationQuestion: null,
+      confidence: 0.7,
+      reason: 'Offline parser did not find an apartment-search request.',
+    };
   }
 
   const clarification = needsClarification(text, seeded);
@@ -474,6 +547,8 @@ async function parseApartmentSearch(message, seedFilters = {}, options = {}) {
     filters: seeded,
     needsClarification: clarification,
     clarificationQuestion: clarification ? clarifyQuestion(text, seeded) : null,
+    confidence: 0.65,
+    reason: 'Offline parser inferred apartment search from housing intent or filters.',
   };
 }
 
@@ -489,6 +564,9 @@ async function openaiParse(message, options = {}) {
         content: `Extract structured apartment search filters for SOKON.
 Return valid JSON only with these fields:
 {
+  "intent": "search_apartment" | "not_apartment_search",
+  "confidence": number,
+  "reason": string | null,
   "propertyType": "apartment" | "room" | null,
   "district": string | null,
   "districtVariants": string[],
@@ -507,13 +585,17 @@ Return valid JSON only with these fields:
   "clarificationQuestion": string | null
 }
 Configured districts from the database: ${configuredDistricts}.
+Decide intent semantically from the user's meaning, not from fixed keywords.
+Use "search_apartment" only when the user wants housing/apartment/room search, comparison, filtering, or recommendations.
+Use "not_apartment_search" for greetings, support requests, booking-policy questions, account questions, small talk, or unrelated messages.
 Normalize district names to the closest configured district when possible.
 Common examples: Ferial/Faryal -> فريال, City -> سيتي, Sayed/Sidi -> سيد, El Gomhoria -> الجمهوريه, Yosry Ragheb -> يسري راغب, Other -> آخر.
 For more than / greater than / اكتر من / اكثر من / فوق, set priceOperator to gt and fill minPrice.
 For less than / under / اقل من / أقل من / تحت, set priceOperator to lt and fill maxPrice.
 For between / from ... to ... / من ... ل ..., set priceOperator to between and fill both minPrice and maxPrice.
 Extract bedrooms, bathrooms, floor, people/capacity, verified preference, rating preference, and feature words like furnished or near university.
-If the request is missing both location and budget/specific filters, ask a short follow-up in the same language as the user.`,
+If the request is a housing search but is missing both location and budget/specific filters, ask a short follow-up in the same language as the user.
+The "reason" field must be a short decision summary, not step-by-step reasoning.`,
       },
       { role: 'user', content: message },
     ],

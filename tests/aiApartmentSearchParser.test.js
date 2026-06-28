@@ -82,4 +82,11 @@ describe('aiApartmentSearchParser', () => {
     expect(result.needsClarification).toBe(true);
     expect(result.clarificationQuestion).toBeTruthy();
   });
+
+  it('does not classify greetings as apartment searches', async () => {
+    const result = await parseApartmentSearch('ازيك');
+
+    expect(result.detectedIntent).toBe('not_apartment_search');
+    expect(result.needsClarification).toBe(false);
+  });
 });

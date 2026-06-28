@@ -35,8 +35,13 @@ async function handleChat(req, res, next) {
     const cleanMessage = message.trim();
     const language = isArabicMessage(cleanMessage) ? 'ar' : 'en';
 
-    // 1. Detect intent first, then refine apartment searches with the structured parser.
-    const analysis = await detectIntentAndEntities(cleanMessage);
+    // 1. Let the AI search planner decide first; local rules only run when AI is unavailable.
+    const searchMetadata = await db.getSearchMetadata();
+    const parsedSearch = await parseApartmentSearch(cleanMessage, {}, searchMetadata);
+    const shouldSearchApartment = parsedSearch.detectedIntent === 'search_apartment';
+    const analysis = shouldSearchApartment
+      ? { intent: 'search_apartment', entities: {} }
+      : await detectIntentAndEntities(cleanMessage);
     const { intent, entities } = analysis;
 
     let data = null;
@@ -48,14 +53,8 @@ async function handleChat(req, res, next) {
     let clarificationQuestion = null;
     let quickReplies = [];
 
-    const shouldSearchApartment =
-      intent === 'search_apartment' ||
-      /[\u0600-\u06ffa-zA-Z]/.test(cleanMessage) && /(?:\bفي\b|\bin\b|\bunder\b|\bover\b|\bmore than\b|\bless than\b|\bbetween\b|\bprice\b|\bسعر\b|\bشقة\b|\bشقق\b|\bflat\b|\bapartment\b|\broom\b|\brooms\b|\bbath\b|\bfloor\b|\bverified\b|\bغرفة\b|\bغرف\b|\bحمام\b|\bدور\b|\bموثق\b|\bاوضة\b|\bشقه\b)/i.test(cleanMessage);
-
     // 2. Fetch real data from the database based on intent.
     if (shouldSearchApartment) {
-      const searchMetadata = await db.getSearchMetadata();
-      const parsedSearch = await parseApartmentSearch(cleanMessage, entities, searchMetadata);
       searchFilters = parsedSearch.filters;
       parserSource = parsedSearch.source;
       needsClarification = parsedSearch.needsClarification;
@@ -68,6 +67,8 @@ async function handleChat(req, res, next) {
           detectedIntent: intent,
           parserSource,
           extractedFilters: searchFilters,
+          plannerConfidence: parsedSearch.confidence,
+          plannerReason: parsedSearch.reason,
           availableDistricts: searchMetadata.districts,
         },
         'AI apartment search parsed',
@@ -106,6 +107,8 @@ async function handleChat(req, res, next) {
           detectedIntent: intent,
           parserSource,
           extractedFilters: searchFilters,
+          plannerConfidence: parsedSearch.confidence,
+          plannerReason: parsedSearch.reason,
           mongoFilter: result.mongoFilter || null,
         },
         'AI apartment search database query prepared',
@@ -195,6 +198,8 @@ async function handleChat(req, res, next) {
       parserSource,
       needsClarification,
       clarificationQuestion,
+      plannerConfidence: parsedSearch.confidence,
+      plannerReason: parsedSearch.reason,
       quickReplies,
       language,
     });
