@@ -10,6 +10,7 @@ const chats = require('./controllers/chat.controller');
 const storage = require('./controllers/storage.controller');
 const functions = require('./controllers/function.controller');
 const chatbot = require('./controllers/chatbot.controller');
+const reviews = require('./controllers/review.controller');
 
 const router = express.Router();
 const upload = multer({
@@ -50,6 +51,9 @@ router.post('/bookings', authenticate, bookings.createBooking);
 router.patch('/bookings/:id/status', authenticate, bookings.updateStatus);
 router.post('/bookings/:id/status', authenticate, bookings.updateStatus);
 router.post('/bookings/:id/rating', authenticate, bookings.rateBooking);
+
+router.get('/reviews/apartments/:apartmentId', optionalAuthenticate, reviews.listApartmentReviews);
+router.post('/reviews', authenticate, reviews.createReview);
 
 router.get('/notifications', authenticate, notifications.listNotifications);
 router.post('/notifications', authenticate, notifications.createNotification);

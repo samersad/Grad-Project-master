@@ -22,6 +22,14 @@ function peopleCount(booking) {
   return Math.max(Number(booking.people_count || 1), 1);
 }
 
+function activeBookingFilter(clientId, apartmentId) {
+  return {
+    clientId,
+    apartmentId,
+    status: { $nin: ['cancelled', 'canceled', 'rejected'] },
+  };
+}
+
 function bookingIdFromRequest(req) {
   const paramsId = req.params.id;
   const bodyId = req.body.bookingId || req.body.booking_id || req.body.bookingID || req.body.p_booking_id || req.body.id || req.body._id;
@@ -43,7 +51,14 @@ function serializeBooking(booking) {
 async function createNotification(payload) {
   try {
     return await Notification.create(payload);
-  } catch (_error) {
+  } catch (error) {
+    if (error.code === 11000 && payload.bookingId) {
+      return Notification.findOneAndUpdate(
+        { bookingId: payload.bookingId },
+        { $set: payload },
+        { new: true },
+      );
+    }
     return null;
   }
 }
@@ -153,7 +168,35 @@ const createBooking = asyncHandler(async (req, res) => {
   if (!payload.status) payload.status = 'pending';
   if (!payload.createdAt) payload.createdAt = new Date();
 
-  const booking = await Booking.create(payload);
+  if (!payload.apartmentId) throw new ApiError(422, 'apartmentId is required');
+
+  const apartment = await Apartment.findOne({ id: payload.apartmentId });
+  if (!apartment) throw new ApiError(404, 'Apartment not found');
+
+  const existingBooking = await Booking.findOne(activeBookingFilter(payload.clientId, payload.apartmentId));
+  if (existingBooking) {
+    return res.status(200).json(serializeBooking(existingBooking));
+  }
+
+  payload.apartmentName = payload.apartmentName || apartment.name;
+  payload.apartmentAddress = payload.apartmentAddress || apartment.address || apartment.locationAddress;
+  payload.apartmentImage = payload.apartmentImage || apartment.images?.[0] || null;
+  payload.ownerId = payload.ownerId || apartment.ownerId;
+  payload.ownerName = payload.ownerName || apartment.ownerName;
+
+  let booking;
+  try {
+    booking = await Booking.create(payload);
+  } catch (error) {
+    if (error.code === 11000) {
+      const duplicateBooking = await Booking.findOne(activeBookingFilter(payload.clientId, payload.apartmentId));
+      if (duplicateBooking) {
+        return res.status(200).json(serializeBooking(duplicateBooking));
+      }
+    }
+    throw error;
+  }
+
   const notificationBody = buildBookingRequestBody(booking);
   
   await createNotification({

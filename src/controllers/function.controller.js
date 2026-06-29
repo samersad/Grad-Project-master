@@ -34,12 +34,27 @@ async function sendNotificationPush({
   });
 }
 
+async function createNotification(payload) {
+  try {
+    return await Notification.create(payload);
+  } catch (error) {
+    if (error.code === 11000 && payload.bookingId) {
+      return Notification.findOneAndUpdate(
+        { bookingId: payload.bookingId },
+        { $set: payload },
+        { new: true },
+      );
+    }
+    throw error;
+  }
+}
+
 const sendBookingNotification = asyncHandler(async (req, res) => {
   const receiverId = req.body.ownerId || req.body.receiverId;
   const title = req.body.title || 'New Booking Request';
   const body = req.body.body;
   const type = req.body.type || 'new_booking';
-  const notification = await Notification.create({
+  const notification = await createNotification({
     title,
     body,
     type,
@@ -66,7 +81,7 @@ const sendChatNotification = asyncHandler(async (req, res) => {
   const title = req.body.title || 'New message';
   const body = req.body.body;
   const type = req.body.type || 'new_message';
-  const notification = await Notification.create({
+  const notification = await createNotification({
     title,
     body,
     type,
@@ -95,7 +110,7 @@ const sendBookingStatusNotification = asyncHandler(async (req, res) => {
   const title = req.body.title;
   const body = req.body.body;
   const type = req.body.type;
-  const notification = await Notification.create({
+  const notification = await createNotification({
     title,
     body,
     type,
