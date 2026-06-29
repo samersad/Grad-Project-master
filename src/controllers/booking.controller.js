@@ -1,5 +1,6 @@
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
+const mongoose = require('mongoose');
 const Booking = require('../models/booking.model');
 const Apartment = require('../models/apartment.model');
 const Notification = require('../models/notification.model');
@@ -20,6 +21,14 @@ function normalizeStatus(status) {
 
 function peopleCount(booking) {
   return Math.max(Number(booking.people_count || 1), 1);
+}
+
+function sessionQuery(query, session) {
+  return session ? query.session(session) : query;
+}
+
+function sessionOptions(session) {
+  return session ? { session } : {};
 }
 
 function activeBookingFilter(clientId, apartmentId) {
@@ -103,8 +112,37 @@ function statusNotification(booking, status, changedByName) {
   return { title, body, type };
 }
 
-async function adjustCapacity(booking, nextStatus) {
-  const apartment = booking.apartmentId ? await Apartment.findOne({ id: booking.apartmentId }) : null;
+async function recalculateApartmentAvailability(apartmentId, session) {
+  const apartment = apartmentId ? await sessionQuery(Apartment.findOne({ id: apartmentId }), session) : null;
+  if (!apartment) return null;
+
+  const activeAcceptedBookings = await sessionQuery(Booking.find({
+    apartmentId,
+    status: { $in: Array.from(acceptedStatuses) },
+    $or: [
+      { endDate: null },
+      { endDate: { $gte: new Date() } },
+    ],
+  }), session);
+
+  const occupiedPeople = activeAcceptedBookings.reduce((sum, item) => sum + peopleCount(item), 0);
+  const maxPeople = Math.max(Number(apartment.max_people || 0), 0);
+  const availablePeople = Math.max(maxPeople - occupiedPeople, 0);
+
+  if (Number(apartment.available_people || 0) !== availablePeople) {
+    apartment.available_people = availablePeople;
+    await Apartment.updateOne(
+      { id: apartmentId },
+      { $set: { available_people: availablePeople } },
+      sessionOptions(session),
+    );
+  }
+
+  return apartment;
+}
+
+async function adjustCapacity(booking, nextStatus, session = null) {
+  const apartment = await recalculateApartmentAvailability(booking.apartmentId, session);
   if (!apartment) throw new ApiError(404, 'Apartment not found for this booking');
 
   const previousStatus = String(booking.status || 'pending').toLowerCase().trim();
@@ -118,10 +156,21 @@ async function adjustCapacity(booking, nextStatus) {
       throw new ApiError(409, `Only ${apartment.available_people || 0} people can still rent this apartment`);
     }
     apartment.available_people -= count;
-    await apartment.save();
+    const capacityUpdate = await Apartment.updateOne(
+      { id: apartment.id, available_people: { $gte: count } },
+      { $inc: { available_people: -count } },
+      sessionOptions(session),
+    );
+    if (capacityUpdate.matchedCount === 0) {
+      throw new ApiError(409, 'Apartment capacity changed, please try again');
+    }
   } else if (willRelease) {
     apartment.available_people = Math.min(apartment.max_people || count, (apartment.available_people || 0) + count);
-    await apartment.save();
+    await Apartment.updateOne(
+      { id: apartment.id },
+      { $set: { available_people: apartment.available_people } },
+      sessionOptions(session),
+    );
   }
 }
 
@@ -239,19 +288,33 @@ const updateStatus = asyncHandler(async (req, res) => {
   const id = bookingIdFromRequest(req);
   if (!id) throw new ApiError(422, 'booking id is required');
 
-  const booking = await Booking.findOne({ id });
-  if (!booking) throw new ApiError(404, 'Booking not found');
-  if (![booking.clientId, booking.ownerId].includes(req.user.id) && req.user.role !== 'admin') throw new ApiError(403, 'Forbidden');
-  if (['accepted', 'confirmed', 'rejected'].includes(status) && booking.ownerId !== req.user.id && req.user.role !== 'admin') {
-    throw new ApiError(403, 'Only the owner can approve or reject this booking');
+  const session = await mongoose.startSession();
+  let booking;
+  let statusChanged = false;
+
+  try {
+    await session.withTransaction(async () => {
+      booking = await Booking.findOne({ id }).session(session);
+      if (!booking) throw new ApiError(404, 'Booking not found');
+      if (![booking.clientId, booking.ownerId].includes(req.user.id) && req.user.role !== 'admin') throw new ApiError(403, 'Forbidden');
+      if (['accepted', 'confirmed', 'rejected'].includes(status) && booking.ownerId !== req.user.id && req.user.role !== 'admin') {
+        throw new ApiError(403, 'Only the owner can approve or reject this booking');
+      }
+
+      const previousStatus = String(booking.status || 'pending').toLowerCase().trim();
+      statusChanged = previousStatus !== status;
+      if (!statusChanged) return;
+
+      await adjustCapacity(booking, status, session);
+      booking.status = status;
+      await booking.save({ session });
+    });
+  } finally {
+    await session.endSession();
   }
 
-  await adjustCapacity(booking, status);
-  booking.status = status;
-  await booking.save();
-
   const notification = statusNotification(booking, status, req.body.changedByName);
-  if (notification && booking.clientId) {
+  if (statusChanged && notification && booking.clientId) {
     await createNotification({
       ...notification,
       createdAt: new Date(),
