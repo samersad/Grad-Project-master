@@ -5,6 +5,7 @@ const logger = require('./logger');
 
 const legacyIndexesToDrop = {
   apartments: ['ownerId_1_address_1_buildingNumber_1_floor_1_unitNumber_1'],
+  bookings: ['studentId_1_apartmentId_1_status_1'],
 };
 
 async function dropLegacyIndexes(connection) {
